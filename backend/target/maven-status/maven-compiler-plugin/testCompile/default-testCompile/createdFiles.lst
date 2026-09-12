@@ -1,0 +1,4 @@
+com\cloudide\cloudide\CloudIdeApplicationTests.class
+com\cloudide\cloudide\AuthSecurityTests.class
+com\cloudide\cloudide\controller\ApiControllerTests.class
+com\cloudide\cloudide\ExecutionControllerTests.class

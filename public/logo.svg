@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none">
+  <defs>
+    <linearGradient id="cloudGrad" x1="4" y1="8" x2="44" y2="40" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#833ab4"/>
+      <stop offset="35%" stop-color="#c13584"/>
+      <stop offset="70%" stop-color="#fd1d1d"/>
+      <stop offset="100%" stop-color="#fcb045"/>
+    </linearGradient>
+    <linearGradient id="bracketGrad" x1="14" y1="18" x2="34" y2="30" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#e2e8f0"/>
+    </linearGradient>
+  </defs>
+  <!-- Sleek Cloud Outline -->
+  <path d="M15.5 35C11.9 35 9 32.1 9 28.5C9 25.2 11.4 22.5 14.6 22.1C15.7 16.9 20.3 13 25.8 13C32.1 13 37.3 17.8 37.9 24C41.3 24.5 44 27.5 44 31C44 34.9 40.9 38 37 38H15.5" stroke="url(#cloudGrad)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Inner Code Brackets < / > -->
+  <path d="M19 25L15 28.5L19 32" stroke="url(#bracketGrad)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M29 25L33 28.5L29 32" stroke="url(#bracketGrad)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M25 24L23 33" stroke="url(#cloudGrad)" stroke-width="2" stroke-linecap="round"/>
+</svg>
