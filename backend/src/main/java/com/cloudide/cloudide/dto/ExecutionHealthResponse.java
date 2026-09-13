@@ -6,6 +6,7 @@ public class ExecutionHealthResponse {
 
     private String status;
     private String docker;
+    private boolean workerAvailable;
     private boolean dockerAvailable;
     private String dockerVersion;
     private String message;
@@ -15,10 +16,11 @@ public class ExecutionHealthResponse {
     public ExecutionHealthResponse() {
     }
 
-    public ExecutionHealthResponse(String status, String docker, boolean dockerAvailable, String dockerVersion,
-                                   String message, Long timestamp, Map<String, Boolean> imagesStatus) {
+    public ExecutionHealthResponse(String status, String docker, boolean workerAvailable, boolean dockerAvailable,
+                                   String dockerVersion, String message, Long timestamp, Map<String, Boolean> imagesStatus) {
         this.status = status;
         this.docker = docker;
+        this.workerAvailable = workerAvailable;
         this.dockerAvailable = dockerAvailable;
         this.dockerVersion = dockerVersion;
         this.message = message;
@@ -40,6 +42,14 @@ public class ExecutionHealthResponse {
 
     public void setDocker(String docker) {
         this.docker = docker;
+    }
+
+    public boolean isWorkerAvailable() {
+        return workerAvailable;
+    }
+
+    public void setWorkerAvailable(boolean workerAvailable) {
+        this.workerAvailable = workerAvailable;
     }
 
     public boolean isDockerAvailable() {
@@ -89,6 +99,7 @@ public class ExecutionHealthResponse {
     public static class Builder {
         private String status;
         private String docker;
+        private boolean workerAvailable;
         private boolean dockerAvailable;
         private String dockerVersion;
         private String message;
@@ -102,6 +113,11 @@ public class ExecutionHealthResponse {
 
         public Builder docker(String docker) {
             this.docker = docker;
+            return this;
+        }
+
+        public Builder workerAvailable(boolean workerAvailable) {
+            this.workerAvailable = workerAvailable;
             return this;
         }
 
@@ -131,7 +147,7 @@ public class ExecutionHealthResponse {
         }
 
         public ExecutionHealthResponse build() {
-            return new ExecutionHealthResponse(status, docker, dockerAvailable, dockerVersion, message, timestamp, imagesStatus);
+            return new ExecutionHealthResponse(status, docker, workerAvailable, dockerAvailable, dockerVersion, message, timestamp, imagesStatus);
         }
     }
 }

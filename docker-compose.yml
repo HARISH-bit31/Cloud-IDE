@@ -1,0 +1,72 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: cloudide-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${DB_NAME:-cloud_ide}
+      MYSQL_USER: ${DB_USERNAME:-cloudide}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-cloudide_secret}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-root_secret}
+    volumes:
+      - cloud_ide_mysql_data:/var/lib/mysql
+    networks:
+      - cloud_ide_network
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -p$${MYSQL_ROOT_PASSWORD}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: cloudide-backend
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_NAME: ${DB_NAME:-cloud_ide}
+      DB_USERNAME: ${DB_USERNAME:-cloudide}
+      DB_PASSWORD: ${DB_PASSWORD:-cloudide_secret}
+      JWT_SECRET: ${JWT_SECRET:-404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970}
+      JWT_EXPIRATION: ${JWT_EXPIRATION:-86400000}
+      SERVER_PORT: 8088
+      EXECUTION_WORKER_URL: ${EXECUTION_WORKER_URL:-http://host.docker.internal:8090}
+      EXECUTION_WORKER_SECRET: ${EXECUTION_WORKER_SECRET}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "${BACKEND_PORT:-8088}:8088"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - cloud_ide_network
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: /api
+    container_name: cloudide-frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-5173}:80"
+    depends_on:
+      - backend
+    networks:
+      - cloud_ide_network
+
+volumes:
+  cloud_ide_mysql_data:
+    name: cloud_ide_mysql_data
+
+networks:
+  cloud_ide_network:
+    name: cloud_ide_network
+    driver: bridge

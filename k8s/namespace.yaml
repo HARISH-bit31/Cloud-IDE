@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cloud-ide
+  labels:
+    app.kubernetes.io/name: cloud-ide
+    app.kubernetes.io/part-of: cloud-ide

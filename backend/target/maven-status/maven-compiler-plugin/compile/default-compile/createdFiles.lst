@@ -46,7 +46,9 @@ com\cloudide\cloudide\dto\RegisterRequest.class
 com\cloudide\cloudide\exception\ForbiddenException.class
 com\cloudide\cloudide\config\JwtProperties.class
 com\cloudide\cloudide\controller\ExecutionController.class
+com\cloudide\cloudide\service\ExecutionWorkerClient.class
 com\cloudide\cloudide\repository\ProjectRepository.class
+com\cloudide\cloudide\service\ExecutionClient.class
 com\cloudide\cloudide\dto\HealthResponse$Builder.class
 com\cloudide\cloudide\service\UserService.class
 com\cloudide\cloudide\dto\FileRequest$Builder.class
@@ -55,9 +57,7 @@ com\cloudide\cloudide\service\ProjectService$1.class
 com\cloudide\cloudide\dto\FileResponse$Builder.class
 com\cloudide\cloudide\security\JwtService.class
 com\cloudide\cloudide\entity\File$Builder.class
-com\cloudide\cloudide\service\DockerExecutionService.class
 com\cloudide\cloudide\dto\AuthUserResponse.class
-com\cloudide\cloudide\service\DockerExecutionService$ActiveExecution.class
 com\cloudide\cloudide\service\ProjectService.class
 com\cloudide\cloudide\dto\ExecutionHealthResponse$Builder.class
 com\cloudide\cloudide\dto\ExecutionRequest$Builder.class
@@ -66,5 +66,4 @@ com\cloudide\cloudide\dto\ErrorResponse.class
 com\cloudide\cloudide\config\CorsConfig$1.class
 com\cloudide\cloudide\dto\ProjectRequest$Builder.class
 com\cloudide\cloudide\entity\Project$Builder.class
-com\cloudide\cloudide\service\DockerExecutionService$1.class
 com\cloudide\cloudide\dto\UserResponse$Builder.class

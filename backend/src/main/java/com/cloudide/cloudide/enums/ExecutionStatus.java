@@ -9,6 +9,7 @@ public enum ExecutionStatus {
     RUNTIME_ERROR,
     TIMEOUT,
     OUTPUT_LIMIT_EXCEEDED,
+    QUEUE_FULL,
     SYSTEM_ERROR,
     STOPPED
 }
