@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: cloud-ide
+  labels:
+    app: grafana
+    app.kubernetes.io/name: cloud-ide
+    app.kubernetes.io/component: grafana
+spec:
+  type: ClusterIP
+  selector:
+    app: grafana
+  ports:
+    - port: 3000
+      targetPort: 3000
+      name: http

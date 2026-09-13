@@ -23,16 +23,19 @@ public class ExecutionService {
     private final ExecutionClient executionClient;
     private final UserService userService;
     private final ProjectRepository projectRepository;
+    private final com.cloudide.cloudide.metrics.ExecutionMetrics executionMetrics;
 
     // Track execution ownership: executionId -> userId
     private final ConcurrentHashMap<String, Long> executionOwnership = new ConcurrentHashMap<>();
 
     public ExecutionService(ExecutionClient executionClient,
                             UserService userService,
-                            ProjectRepository projectRepository) {
+                            ProjectRepository projectRepository,
+                            com.cloudide.cloudide.metrics.ExecutionMetrics executionMetrics) {
         this.executionClient = executionClient;
         this.userService = userService;
         this.projectRepository = projectRepository;
+        this.executionMetrics = executionMetrics;
     }
 
     public ExecutionResponse startExecution(ExecutionRequest request) {
@@ -51,11 +54,25 @@ public class ExecutionService {
         String executionId = UUID.randomUUID().toString();
         executionOwnership.put(executionId, currentUser.getId());
 
-        log.info("Starting interactive {} execution (id: {}) for user {}", request.getLanguage(), executionId, currentUser.getEmail());
-        return executionClient.startExecution(executionId, request);
+        String lang = request.getLanguage() != null ? request.getLanguage().name() : "UNKNOWN";
+        executionMetrics.incrementExecutionStarted(lang);
+
+        log.info("Starting interactive {} execution (id: {}) for user {}", lang, executionId, currentUser.getEmail());
+        try {
+            ExecutionResponse response = executionClient.startExecution(executionId, request);
+            if (response.getStatus() != null && response.getStatus() != ExecutionStatus.RUNNING && response.getStatus() != ExecutionStatus.QUEUED) {
+                executionMetrics.recordExecutionCompleted(lang, response.getStatus().name(), response.getExecutionTimeMs() != null ? response.getExecutionTimeMs() : 0);
+            }
+            return response;
+        } catch (Exception e) {
+            executionMetrics.recordExecutionFailure(lang, "START_FAILED");
+            throw e;
+        }
     }
 
     public ExecutionResponse execute(ExecutionRequest request) {
+        String lang = request.getLanguage() != null ? request.getLanguage().name() : "UNKNOWN";
+        long start = System.currentTimeMillis();
         ExecutionResponse response = startExecution(request);
         if (response.getStatus() != ExecutionStatus.RUNNING) {
             return response;
@@ -68,6 +85,8 @@ public class ExecutionService {
         while (System.currentTimeMillis() < deadline) {
             ExecutionResponse current = getExecutionStatus(executionId);
             if (current != null && current.getStatus() != ExecutionStatus.RUNNING && current.getStatus() != ExecutionStatus.WAITING_FOR_INPUT && current.getStatus() != ExecutionStatus.QUEUED) {
+                long duration = System.currentTimeMillis() - start;
+                executionMetrics.recordExecutionCompleted(lang, current.getStatus().name(), current.getExecutionTimeMs() != null ? current.getExecutionTimeMs() : duration);
                 return current;
             }
             try {
@@ -78,7 +97,12 @@ public class ExecutionService {
             }
         }
 
-        return getExecutionStatus(executionId);
+        ExecutionResponse finalStatus = getExecutionStatus(executionId);
+        if (finalStatus != null && finalStatus.getStatus() != null) {
+            long duration = System.currentTimeMillis() - start;
+            executionMetrics.recordExecutionCompleted(lang, finalStatus.getStatus().name(), finalStatus.getExecutionTimeMs() != null ? finalStatus.getExecutionTimeMs() : duration);
+        }
+        return finalStatus;
     }
 
     public boolean sendInput(String executionId, String input) {
@@ -101,7 +125,11 @@ public class ExecutionService {
         verifyExecutionOwnership(executionId, currentUser.getId());
 
         log.info("User {} requesting stop for execution {}", currentUser.getEmail(), executionId);
-        return executionClient.stopExecution(executionId);
+        ExecutionResponse response = executionClient.stopExecution(executionId);
+        if (response != null && response.getStatus() != null) {
+            executionMetrics.recordExecutionCompleted("UNKNOWN", response.getStatus().name(), 0);
+        }
+        return response;
     }
 
     public ExecutionHealthResponse getHealth() {

@@ -33,7 +33,7 @@ spec:
         fsGroup: 1000
       containers:
         - name: backend
-          image: cloud-ide-backend:latest
+          image: cloud-ide-backend:v9.4
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8088

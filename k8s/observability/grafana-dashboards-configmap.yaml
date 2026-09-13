@@ -1,0 +1,160 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards-provider
+  namespace: cloud-ide
+  labels:
+    app.kubernetes.io/name: cloud-ide
+    app.kubernetes.io/component: grafana
+data:
+  dashboards.yaml: |
+    apiVersion: 1
+    providers:
+      - name: 'default'
+        orgId: 1
+        folder: ''
+        type: file
+        disableDeletion: false
+        editable: true
+        options:
+          path: /var/lib/grafana/dashboards
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-cloudide-dashboard
+  namespace: cloud-ide
+  labels:
+    app.kubernetes.io/name: cloud-ide
+    app.kubernetes.io/component: grafana
+data:
+  cloud-ide-overview.json: |
+    {
+      "annotations": { "list": [] },
+      "editable": true,
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 1,
+      "id": null,
+      "links": [],
+      "liveNow": false,
+      "panels": [
+        {
+          "title": "Cloud IDE Executions by Language",
+          "type": "stat",
+          "gridPos": { "h": 6, "w": 6, "x": 0, "y": 0 },
+          "targets": [
+            {
+              "expr": "sum by (language) (cloud_ide_executions_total_total{status=\"STARTED\"})",
+              "legendFormat": "{{language}}",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "title": "Total Completed Executions",
+          "type": "stat",
+          "gridPos": { "h": 6, "w": 6, "x": 6, "y": 0 },
+          "targets": [
+            {
+              "expr": "sum(cloud_ide_executions_total_total{status=~\"SUCCESS|STOPPED|TIMEOUT|RUNTIME_ERROR|COMPILATION_ERROR\"})",
+              "legendFormat": "Completed",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "title": "Active Running Executions",
+          "type": "stat",
+          "gridPos": { "h": 6, "w": 6, "x": 12, "y": 0 },
+          "targets": [
+            {
+              "expr": "cloud_ide_active_executions",
+              "legendFormat": "Active",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "title": "Execution Failures & Timeouts",
+          "type": "stat",
+          "gridPos": { "h": 6, "w": 6, "x": 18, "y": 0 },
+          "targets": [
+            {
+              "expr": "sum(cloud_ide_executions_total_total{status=~\"TIMEOUT|RUNTIME_ERROR|COMPILATION_ERROR|SYSTEM_ERROR\"})",
+              "legendFormat": "Failures",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "title": "HTTP Request Rate (req/sec)",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+          "targets": [
+            {
+              "expr": "sum(rate(http_server_requests_seconds_count[1m])) by (uri, status)",
+              "legendFormat": "{{uri}} [{{status}}]",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "title": "JVM Memory Usage (Heap & Non-Heap)",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+          "targets": [
+            {
+              "expr": "sum(jvm_memory_used_bytes{area=\"heap\"}) by (application)",
+              "legendFormat": "Heap Used",
+              "refId": "A"
+            },
+            {
+              "expr": "sum(jvm_memory_max_bytes{area=\"heap\"}) by (application)",
+              "legendFormat": "Heap Max",
+              "refId": "B"
+            }
+          ]
+        },
+        {
+          "title": "CPU Usage (%)",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 },
+          "targets": [
+            {
+              "expr": "process_cpu_usage * 100",
+              "legendFormat": "Process CPU %",
+              "refId": "A"
+            },
+            {
+              "expr": "system_cpu_usage * 100",
+              "legendFormat": "System CPU %",
+              "refId": "B"
+            }
+          ]
+        },
+        {
+          "title": "Active JVM Threads & DB Connections",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 14 },
+          "targets": [
+            {
+              "expr": "jvm_threads_live_threads",
+              "legendFormat": "Live Threads",
+              "refId": "A"
+            },
+            {
+              "expr": "hikaricp_connections_active",
+              "legendFormat": "DB Active Connections",
+              "refId": "B"
+            }
+          ]
+        }
+      ],
+      "refresh": "5s",
+      "schemaVersion": 38,
+      "style": "dark",
+      "tags": ["cloud-ide", "kubernetes"],
+      "time": { "from": "now-15m", "to": "now" },
+      "title": "Cloud IDE Platform Overview",
+      "uid": "cloud-ide-overview"
+    }

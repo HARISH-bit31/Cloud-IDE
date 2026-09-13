@@ -16,3 +16,14 @@ resources:
   - network-policy.yaml
   - ingress.yaml
   - pdb.yaml
+  - observability/prometheus-configmap.yaml
+  - observability/prometheus-deployment.yaml
+  - observability/prometheus-service.yaml
+  - observability/grafana-datasources-configmap.yaml
+  - observability/grafana-dashboards-configmap.yaml
+  - observability/grafana-deployment.yaml
+  - observability/grafana-service.yaml
+  - observability/loki-configmap.yaml
+  - observability/loki-deployment.yaml
+  - observability/loki-service.yaml
+  - observability/promtail.yaml

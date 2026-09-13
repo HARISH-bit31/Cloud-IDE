@@ -163,9 +163,14 @@ Start-Sleep -Milliseconds 800
 Invoke-RestMethod -Uri "$baseUrl/api/execute/$($e1.executionId)/input" -Method Post -ContentType "application/json" -Headers $headers -Body (@{input="10`n"} | ConvertTo-Json) | Out-Null
 Invoke-RestMethod -Uri "$baseUrl/api/execute/$($e2.executionId)/input" -Method Post -ContentType "application/json" -Headers $headers -Body (@{input="10`n"} | ConvertTo-Json) | Out-Null
 
-Start-Sleep -Milliseconds 2500
-$r14A = Invoke-RestMethod -Uri "$baseUrl/api/execute/$($e1.executionId)" -Headers $headers
-$r14B = Invoke-RestMethod -Uri "$baseUrl/api/execute/$($e2.executionId)" -Headers $headers
+for ($i = 0; $i -lt 15; $i++) {
+    Start-Sleep -Milliseconds 600
+    $r14A = Invoke-RestMethod -Uri "$baseUrl/api/execute/$($e1.executionId)" -Headers $headers
+    $r14B = Invoke-RestMethod -Uri "$baseUrl/api/execute/$($e2.executionId)" -Headers $headers
+    if ($r14A.status -eq "SUCCESS" -and $r14B.status -eq "SUCCESS") {
+        break
+    }
+}
 
 Write-Host "Exec A:" $r14A.stdout.Trim() "Status:" $r14A.status
 Write-Host "Exec B:" $r14B.stdout.Trim() "Status:" $r14B.status
@@ -173,6 +178,7 @@ $results["Test 14: Concurrent Executions"] = ($r14A.stdout -match "ExecA = 50" -
 
 # 15. Cleanup / Orphan Containers
 Write-Host "`n--- TEST 15: CLEANUP / ORPHAN CONTAINERS ---"
+Start-Sleep -Milliseconds 1500
 $orphans = (docker ps -a --filter "name=cloudide-sandbox" --format "{{.Names}}")
 Write-Host "Found sandbox containers count:" ($orphans.Length)
 $results["Test 15: Container Cleanup"] = ($orphans.Length -eq 0 -or $orphans -eq "")

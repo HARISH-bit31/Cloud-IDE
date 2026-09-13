@@ -55,8 +55,10 @@ com\cloudide\cloudide\dto\FileRequest$Builder.class
 com\cloudide\cloudide\exception\ConflictException.class
 com\cloudide\cloudide\service\ProjectService$1.class
 com\cloudide\cloudide\dto\FileResponse$Builder.class
+com\cloudide\cloudide\config\CorrelationIdFilter.class
 com\cloudide\cloudide\security\JwtService.class
 com\cloudide\cloudide\entity\File$Builder.class
+com\cloudide\cloudide\metrics\ExecutionMetrics.class
 com\cloudide\cloudide\dto\AuthUserResponse.class
 com\cloudide\cloudide\service\ProjectService.class
 com\cloudide\cloudide\dto\ExecutionHealthResponse$Builder.class

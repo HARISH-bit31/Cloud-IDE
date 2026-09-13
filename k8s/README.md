@@ -164,12 +164,76 @@ kubectl delete pvc mysql-pvc -n cloud-ide
 
 ---
 
-## 7. Comparative Architecture Matrix
+## 8. Observability Stack (Phase 9.4)
 
-| Aspect | Docker Compose | Local Kubernetes (Phase 9.3) | Future Production (Phase 9.4+) |
+Cloud IDE includes a complete local Kubernetes observability stack consisting of **Prometheus** (metrics scraping and storage), **Grafana** (dashboards and visualization), **Loki** (log aggregation), and **Promtail** (pod log shipping).
+
+### Observability Topology
+
+```
+                         Cloud IDE Pods
+              ┌─────────────────┴─────────────────┐
+              ▼                                   ▼
+      Spring Boot Actuator                   Pod Log Files
+     (/actuator/prometheus)             (/var/log/pods/*/*/*.log)
+              │                                   │
+              ▼                                   ▼
+      Prometheus (:9090)                 Promtail (DaemonSet)
+              │                                   │
+              │                                   ▼
+              │                             Loki (:3100)
+              │                                   │
+              └─────────────────┬─────────────────┘
+                                │
+                                ▼
+                         Grafana (:3000)
+                   (Pre-provisioned Dashboard)
+```
+
+### Accessing Observability Tools (Port-Forwarding)
+
+Observability components are internal to the `cloud-ide` namespace and not exposed publicly. Access them securely using `kubectl port-forward`:
+
+```powershell
+# 1. Grafana Dashboard (Credentials configured via Secret: grafana-admin)
+kubectl port-forward svc/grafana 3000:3000 -n cloud-ide
+# URL: http://localhost:3000 (Dashboard: "Cloud IDE Platform Overview")
+
+# 2. Prometheus UI & API
+kubectl port-forward svc/prometheus 9090:9090 -n cloud-ide
+# URL: http://localhost:9090
+
+# 3. Loki API & Log Streams
+kubectl port-forward svc/loki 3100:3100 -n cloud-ide
+# URL: http://localhost:3100
+```
+
+### Key Custom Micrometer Metrics
+
+| Metric Name | Type | Description | Labels / Dimensions |
+| :--- | :--- | :--- | :--- |
+| `cloud_ide_executions_total` | Counter | Total execution requests started/completed | `language`, `status` |
+| `cloud_ide_execution_duration_seconds` | Summary/Histogram | Execution latency in seconds | `language`, `status` |
+| `cloud_ide_execution_failures_total` | Counter | Execution failures and errors | `language`, `reason` |
+| `cloud_ide_active_executions` | Gauge | Currently running execution jobs | `application` |
+| `jvm_memory_used_bytes` | Gauge | JVM memory consumption | `area`, `id` |
+| `hikaricp_connections_active` | Gauge | Active MySQL connection pool connections | `pool` |
+
+### Structured Logging & Correlation IDs
+- All HTTP requests entering the Spring Boot backend receive a unique `X-Request-ID` (correlation ID) injected into SLF4J `MDC` and returned in the HTTP response headers.
+- Promtail continuously tails pod logs from `/var/log/pods` and pushes them to Loki with labels `job="kubernetes-pods"` and container-level metadata.
+- Grafana integrates both Prometheus metrics and Loki log streams in a single unified dashboard.
+
+---
+
+## 9. Comparative Architecture Matrix
+
+| Aspect | Docker Compose | Local Kubernetes (Phase 9.4) | Future Production (Phase 9.5+) |
 | :--- | :--- | :--- | :--- |
 | **Frontend Access** | `http://localhost:5173` | `http://cloud-ide.local` / `http://localhost:30080` | `https://cloud-ide.io` (TLS Ingress / CDN) |
 | **Backend Replicas** | 1 container | 2 pods (RollingUpdate, PDB) | Auto-scaling (HPA / KEDA) |
 | **Frontend Replicas** | 1 container | 2 pods (RollingUpdate, PDB) | Auto-scaling (HPA) |
 | **MySQL** | Docker container | 1 pod + 5Gi PVC | Managed Cloud DB (AWS RDS / Cloud SQL) |
 | **Code Execution** | Host Worker (`8090`) | Host Worker (`8090`) | Asynchronous Queue + MicroVMs (gVisor/Firecracker) |
+| **Metrics & Monitoring** | None / local actuator | Prometheus + Custom Micrometer Metrics | Managed Prometheus / Grafana Cloud |
+| **Log Aggregation** | Docker logs | Promtail + Loki | Managed Loki / OpenSearch / CloudWatch |
