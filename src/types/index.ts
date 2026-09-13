@@ -62,7 +62,7 @@ export interface ExecutionResult {
   executionTime: number; // in seconds
   cpuUsage: string;
   memoryUsage: string;
-  status: 'success' | 'error' | 'stopped' | 'running';
+  status: 'success' | 'error' | 'stopped' | 'running' | 'queued';
   compilationTime?: number;
   containerImage?: string;
 }

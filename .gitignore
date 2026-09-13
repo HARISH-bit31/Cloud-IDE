@@ -23,6 +23,11 @@ dist-ssr
 *.sln
 *.sw?
 
+# Build outputs
+target/
+**/target/
+scratch/
+
 # Environment & Secrets
 .env
 .env.*

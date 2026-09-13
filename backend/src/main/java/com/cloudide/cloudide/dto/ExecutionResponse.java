@@ -10,6 +10,7 @@ public class ExecutionResponse {
     private String stderr;
     private Integer exitCode;
     private Long executionTimeMs;
+    private Double memoryUsedMb;
     private String errorDetails;
 
     public ExecutionResponse() {
@@ -22,6 +23,7 @@ public class ExecutionResponse {
             String stderr,
             Integer exitCode,
             Long executionTimeMs,
+            Double memoryUsedMb,
             String errorDetails
     ) {
         this.executionId = executionId;
@@ -30,7 +32,20 @@ public class ExecutionResponse {
         this.stderr = stderr;
         this.exitCode = exitCode;
         this.executionTimeMs = executionTimeMs;
+        this.memoryUsedMb = memoryUsedMb;
         this.errorDetails = errorDetails;
+    }
+
+    public ExecutionResponse(
+            String executionId,
+            ExecutionStatus status,
+            String stdout,
+            String stderr,
+            Integer exitCode,
+            Long executionTimeMs,
+            String errorDetails
+    ) {
+        this(executionId, status, stdout, stderr, exitCode, executionTimeMs, null, errorDetails);
     }
 
     public ExecutionResponse(
@@ -41,7 +56,7 @@ public class ExecutionResponse {
             Long executionTimeMs,
             String errorDetails
     ) {
-        this(null, status, stdout, stderr, exitCode, executionTimeMs, errorDetails);
+        this(null, status, stdout, stderr, exitCode, executionTimeMs, null, errorDetails);
     }
 
     public String getExecutionId() {
@@ -92,6 +107,14 @@ public class ExecutionResponse {
         this.executionTimeMs = executionTimeMs;
     }
 
+    public Double getMemoryUsedMb() {
+        return memoryUsedMb;
+    }
+
+    public void setMemoryUsedMb(Double memoryUsedMb) {
+        this.memoryUsedMb = memoryUsedMb;
+    }
+
     public String getErrorDetails() {
         return errorDetails;
     }
@@ -111,6 +134,7 @@ public class ExecutionResponse {
         private String stderr;
         private Integer exitCode;
         private Long executionTimeMs;
+        private Double memoryUsedMb;
         private String errorDetails;
 
         public Builder executionId(String executionId) {
@@ -143,13 +167,18 @@ public class ExecutionResponse {
             return this;
         }
 
+        public Builder memoryUsedMb(Double memoryUsedMb) {
+            this.memoryUsedMb = memoryUsedMb;
+            return this;
+        }
+
         public Builder errorDetails(String errorDetails) {
             this.errorDetails = errorDetails;
             return this;
         }
 
         public ExecutionResponse build() {
-            return new ExecutionResponse(executionId, status, stdout, stderr, exitCode, executionTimeMs, errorDetails);
+            return new ExecutionResponse(executionId, status, stdout, stderr, exitCode, executionTimeMs, memoryUsedMb, errorDetails);
         }
     }
 }

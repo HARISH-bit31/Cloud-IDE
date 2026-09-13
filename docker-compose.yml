@@ -37,6 +37,8 @@ services:
       SERVER_PORT: 8088
       EXECUTION_WORKER_URL: ${EXECUTION_WORKER_URL:-http://host.docker.internal:8090}
       EXECUTION_WORKER_SECRET: ${EXECUTION_WORKER_SECRET}
+      EXECUTION_QUEUE_CAPACITY: ${EXECUTION_QUEUE_CAPACITY:-20}
+      EXECUTION_WORKER_CONCURRENCY: ${EXECUTION_WORKER_CONCURRENCY:-4}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:

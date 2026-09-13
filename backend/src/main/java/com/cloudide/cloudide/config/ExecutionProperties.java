@@ -17,6 +17,12 @@ public class ExecutionProperties {
     @org.springframework.beans.factory.annotation.Value("${execution.timeout-seconds:10}")
     private int timeoutSeconds = 10;
 
+    @org.springframework.beans.factory.annotation.Value("${execution.queue.capacity:${EXECUTION_QUEUE_CAPACITY:20}}")
+    private int queueCapacity = 20;
+
+    @org.springframework.beans.factory.annotation.Value("${execution.worker.concurrency:${EXECUTION_WORKER_CONCURRENCY:4}}")
+    private int workerConcurrency = 4;
+
     @PostConstruct
     public void validateConfiguration() {
         if (workerSecret == null || workerSecret.isBlank() || "replace-with-a-long-random-secret".equalsIgnoreCase(workerSecret)) {
@@ -46,5 +52,21 @@ public class ExecutionProperties {
 
     public void setTimeoutSeconds(int timeoutSeconds) {
         this.timeoutSeconds = timeoutSeconds;
+    }
+
+    public int getQueueCapacity() {
+        return queueCapacity;
+    }
+
+    public void setQueueCapacity(int queueCapacity) {
+        this.queueCapacity = queueCapacity;
+    }
+
+    public int getWorkerConcurrency() {
+        return workerConcurrency;
+    }
+
+    public void setWorkerConcurrency(int workerConcurrency) {
+        this.workerConcurrency = workerConcurrency;
     }
 }

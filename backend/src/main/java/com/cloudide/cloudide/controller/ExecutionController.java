@@ -27,7 +27,7 @@ public class ExecutionController {
         return ResponseEntity.ok(response);
     }
 
-    @PostMapping("/execute/{executionId}/input")
+    @PostMapping({"/execute/{executionId}/input", "/executions/{executionId}/input"})
     public ResponseEntity<?> sendInput(
             @PathVariable String executionId,
             @RequestBody ExecutionInputRequest inputRequest
@@ -41,7 +41,7 @@ public class ExecutionController {
         }
     }
 
-    @GetMapping("/execute/{executionId}")
+    @GetMapping({"/execute/{executionId}", "/executions/{executionId}"})
     public ResponseEntity<ExecutionResponse> getExecutionStatus(@PathVariable String executionId) {
         ExecutionResponse response = executionService.getExecutionStatus(executionId);
         if (response != null) {
@@ -51,7 +51,7 @@ public class ExecutionController {
         }
     }
 
-    @PostMapping("/execute/{executionId}/stop")
+    @PostMapping({"/execute/{executionId}/stop", "/executions/{executionId}/stop"})
     public ResponseEntity<ExecutionResponse> stopExecution(@PathVariable String executionId) {
         ExecutionResponse response = executionService.stopExecution(executionId);
         if (response != null) {

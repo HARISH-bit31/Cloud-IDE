@@ -11,5 +11,6 @@ public enum ExecutionStatus {
     OUTPUT_LIMIT_EXCEEDED,
     QUEUE_FULL,
     SYSTEM_ERROR,
-    STOPPED
+    STOPPED,
+    FAILED
 }

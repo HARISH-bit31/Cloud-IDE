@@ -33,7 +33,7 @@ spec:
         fsGroup: 1000
       containers:
         - name: backend
-          image: cloud-ide-backend:v9.4
+          image: cloud-ide-backend:v9.5
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8088
@@ -69,6 +69,16 @@ spec:
                 configMapKeyRef:
                   name: cloud-ide-config
                   key: EXECUTION_WORKER_URL
+            - name: EXECUTION_QUEUE_CAPACITY
+              valueFrom:
+                configMapKeyRef:
+                  name: cloud-ide-config
+                  key: EXECUTION_QUEUE_CAPACITY
+            - name: EXECUTION_WORKER_CONCURRENCY
+              valueFrom:
+                configMapKeyRef:
+                  name: cloud-ide-config
+                  key: EXECUTION_WORKER_CONCURRENCY
             - name: CORS_ALLOWED_ORIGINS
               valueFrom:
                 configMapKeyRef:

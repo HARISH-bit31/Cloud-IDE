@@ -78,9 +78,15 @@ export const executionService = {
 
         let response = initialResponse;
 
-        // If running, poll for updates until finished
-        if (response.status === 'RUNNING' && executionId) {
-          emitLog(`Interactive process running in container (ID: ${executionId.substring(0, 8)})...`, 'info');
+        if (response.status === 'QUEUED') {
+          emitLog(`Execution queued (ID: ${executionId ? executionId.substring(0, 8) : 'unknown'}). Waiting for worker slot...`, 'info');
+        }
+
+        // If queued or running, poll for updates until finished
+        if ((response.status === 'QUEUED' || response.status === 'RUNNING' || response.status === 'WAITING_FOR_INPUT') && executionId) {
+          if (response.status === 'RUNNING') {
+            emitLog(`Interactive process running in container (ID: ${executionId.substring(0, 8)})...`, 'info');
+          }
 
           // Initial progress state
           if (onProgress) {
@@ -91,10 +97,12 @@ export const executionService = {
               executionTime: 0.1,
               cpuUsage: '0.8%',
               memoryUsage: '< 32 MB',
-              status: 'running',
+              status: response.status === 'QUEUED' ? 'queued' : 'running',
               containerImage: containerTag,
             });
           }
+
+          let loggedRunning = response.status === 'RUNNING';
 
           while (!controller.signal.aborted) {
             await new Promise((r) => setTimeout(r, 120));
@@ -104,8 +112,13 @@ export const executionService = {
               const pollRes = await executionApi.getExecutionStatus(executionId);
               response = pollRes;
 
+              if (!loggedRunning && (pollRes.status === 'RUNNING' || pollRes.status === 'WAITING_FOR_INPUT')) {
+                emitLog(`Worker slot acquired. Process running in container (ID: ${executionId.substring(0, 8)})...`, 'info');
+                loggedRunning = true;
+              }
+
               const elapsedSec = Number((pollRes.executionTimeMs / 1000).toFixed(2));
-              if (onProgress && (pollRes.status === 'RUNNING' || pollRes.status === 'WAITING_FOR_INPUT')) {
+              if (onProgress && (pollRes.status === 'RUNNING' || pollRes.status === 'WAITING_FOR_INPUT' || pollRes.status === 'QUEUED')) {
                 onProgress({
                   stdout: pollRes.stdout || '',
                   stderr: pollRes.stderr || '',
@@ -113,7 +126,7 @@ export const executionService = {
                   executionTime: elapsedSec,
                   cpuUsage: '1.0%',
                   memoryUsage: '< 32 MB',
-                  status: 'running',
+                  status: pollRes.status === 'QUEUED' ? 'queued' : 'running',
                   containerImage: containerTag,
                 });
               }
@@ -240,14 +253,18 @@ export const executionService = {
           });
         }
 
-        const errorMessage =
-          err?.response?.data?.message || err?.message || 'Failed to connect to execution engine';
+        const isQueueFull = err?.response?.status === 429;
+        const errorMessage = isQueueFull
+          ? 'Execution queue is full. Too many concurrent executions. Please try again in a few moments.'
+          : (err?.response?.data?.message || err?.message || 'Failed to connect to execution engine');
         emitLog(`[SYSTEM_ERROR] ${errorMessage}`, 'error');
 
         return resolve({
           stdout: '',
-          stderr: `System Error: ${errorMessage}\nPlease ensure Docker Desktop is running and backend is healthy.`,
-          exitCode: -1,
+          stderr: isQueueFull
+            ? `Error 429: Execution queue saturated.\nThe system is currently processing maximum concurrent executions. Please wait a moment and try again.`
+            : `System Error: ${errorMessage}\nPlease ensure Docker Desktop is running and backend is healthy.`,
+          exitCode: isQueueFull ? 429 : -1,
           executionTime: 0.0,
           cpuUsage: '0.0%',
           memoryUsage: '0.0 MB',

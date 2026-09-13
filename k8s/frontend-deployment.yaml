@@ -27,7 +27,7 @@ spec:
       automountServiceAccountToken: false
       containers:
         - name: frontend
-          image: cloud-ide-frontend:latest
+          image: cloud-ide-frontend:v9.5
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 80

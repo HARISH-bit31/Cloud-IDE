@@ -89,7 +89,8 @@ export type BackendExecutionStatus =
   | 'TIMEOUT'
   | 'OUTPUT_LIMIT_EXCEEDED'
   | 'SYSTEM_ERROR'
-  | 'STOPPED';
+  | 'STOPPED'
+  | 'FAILED';
 
 export interface ExecutionRequest {
   language: 'JAVA' | 'PYTHON' | 'C' | 'CPP';

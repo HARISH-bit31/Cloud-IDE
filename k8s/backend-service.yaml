@@ -9,6 +9,10 @@ metadata:
     app.kubernetes.io/component: backend
 spec:
   type: ClusterIP
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 10800
   selector:
     app: backend
   ports:
