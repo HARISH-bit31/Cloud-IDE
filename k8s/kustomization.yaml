@@ -14,3 +14,5 @@ resources:
   - frontend-deployment.yaml
   - frontend-service.yaml
   - network-policy.yaml
+  - ingress.yaml
+  - pdb.yaml

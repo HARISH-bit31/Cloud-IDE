@@ -8,7 +8,12 @@ metadata:
     app.kubernetes.io/name: cloud-ide
     app.kubernetes.io/component: frontend
 spec:
-  replicas: 1
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
   selector:
     matchLabels:
       app: frontend
@@ -19,6 +24,7 @@ spec:
         app.kubernetes.io/name: cloud-ide
         app.kubernetes.io/component: frontend
     spec:
+      automountServiceAccountToken: false
       containers:
         - name: frontend
           image: cloud-ide-frontend:latest
@@ -33,11 +39,19 @@ spec:
             limits:
               cpu: 200m
               memory: 128Mi
-          readinessProbe:
+          startupProbe:
             httpGet:
               path: /
               port: 80
             initialDelaySeconds: 5
+            periodSeconds: 3
+            timeoutSeconds: 2
+            failureThreshold: 6
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 3
             periodSeconds: 5
             timeoutSeconds: 2
             failureThreshold: 3
@@ -45,7 +59,7 @@ spec:
             httpGet:
               path: /
               port: 80
-            initialDelaySeconds: 15
+            initialDelaySeconds: 10
             periodSeconds: 10
             timeoutSeconds: 2
             failureThreshold: 3

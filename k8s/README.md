@@ -1,6 +1,6 @@
-# Cloud IDE — Kubernetes Deployment (Phase 9.2)
+# Cloud IDE — Kubernetes Deployment (Phase 9.3)
 
-This directory contains the Kubernetes manifests for deploying the Cloud IDE application (Frontend, Backend, MySQL, Network Policies) to a local Kubernetes cluster such as **Docker Desktop Kubernetes**.
+This directory contains the production-style Kubernetes manifests for deploying the Cloud IDE application (Frontend, Backend, MySQL, Network Policies, Ingress, Pod Disruption Budgets) to a local Kubernetes cluster such as **Docker Desktop Kubernetes**.
 
 For an in-depth analysis of the security boundary, host communication, and future cloud execution architectures, refer to [`execution-worker-architecture.md`](file:///c:/Users/Welcome/Documents/projects/Cloud-IDE/k8s/execution-worker-architecture.md).
 
@@ -9,203 +9,167 @@ For an in-depth analysis of the security boundary, host communication, and futur
 ## 1. Architecture Overview
 
 ```
-                         Kubernetes Cluster
-                      (Namespace: cloud-ide)
-                                 │
-          ┌──────────────────────┼──────────────────────┐
-          │                      │                      │
-  Frontend Pod(s)          Backend Pod(s)          MySQL Pod(s)
-  (Nginx + React)       (Spring Boot Java 21)       (MySQL 8.0)
-          │                      │                      │
-    NodePort 30080         ClusterIP 8088         ClusterIP 3306
-  (http://localhost:30080)   (http://backend:8088)  (mysql:3306)
-          │                      │                      │
-          │ /api proxy           │                      ▼
-          └─────────────────────►│                 mysql-pvc
-                                 │                   (5Gi)
-                                 │ HTTP
-                                 ▼
-                     host.docker.internal:8090
-                     Execution Worker (Host)
+                               Kubernetes Cluster
+                             (Namespace: cloud-ide)
+                                        │
+           ┌────────────────────────────┼────────────────────────────┐
+           │                            │                            │
+   Frontend Pods (x2)            Backend Pods (x2)              MySQL Pod (x1)
+     (Nginx/React)            (Spring Boot Java 21)              (MySQL 8.0)
+     ClusterIP: 80                ClusterIP: 8088              ClusterIP: 3306
+    (NodePort: 30080)                   │                            │
+           │                            │                            ▼
+           │ /api proxy                 │ JDBC                   mysql-pvc
+           └───────────────────────────►│                          (5Gi)
+                                        │ HTTP (Worker Secret)
+                                        ▼
+                            host.docker.internal:8090
+                      ┌───────────────────────────────────┐
+                      │    Execution Worker Service       │
+                      │  (Host Windows Machine - Port 8090│
+                      └─────────────────┬─────────────────┘
+                                        │ ProcessBuilder API
+                                        ▼
+                               Docker Desktop Engine
+                                        │
+            ┌───────────────────────────┼───────────────────────────┐
+            ▼                           ▼                           ▼
+     Java Sandbox                Python Sandbox               C / C++ Sandbox
+  (cloud-ide-java:latest)     (cloud-ide-python:latest)    (cloud-ide-c/cpp:latest)
 ```
-
-### Components
-
-1. **Namespace (`cloud-ide`)**: Logical isolation boundary for all Cloud IDE Kubernetes resources.
-2. **Frontend Deployment & Service (`frontend`)**:
-   - Nginx serving the compiled React/Vite/TypeScript single-page application.
-   - Nginx reverse-proxies `/api/` requests to `http://backend:8088/api/`.
-   - Exposed externally on the host at **`http://localhost:30080`** via a Kubernetes `NodePort` Service (port 30080).
-3. **Backend Deployment & Service (`backend`)**:
-   - Spring Boot 3.4.3 (Java 21) REST API.
-   - Communicates with MySQL internally via `mysql:3306`.
-   - Communicates with the Execution Worker via `http://host.docker.internal:8090` using mutual worker secret authentication (`X-Execution-Worker-Secret`).
-   - ClusterIP Service exposed internally on port `8088`.
-4. **MySQL Deployment, Service, & PVC (`mysql`, `mysql-pvc`)**:
-   - MySQL 8.0 container attached to a 5Gi `PersistentVolumeClaim` mounted at `/var/lib/mysql`.
-   - ClusterIP Service exposed internally on port `3306`.
-5. **ConfigMap & Secret (`cloud-ide-config`, `cloud-ide-secrets`)**:
-   - Non-sensitive parameters stored in `cloud-ide-config`.
-   - Sensitive credentials (DB passwords, JWT signing key, worker secret) stored securely in `cloud-ide-secrets`.
 
 ---
 
-## 2. Prerequisites
+## 2. Ingress & Access Methods
 
-1. **Docker Desktop** with **Kubernetes enabled**:
-   - Open Docker Desktop $\rightarrow$ Settings $\rightarrow$ Kubernetes $\rightarrow$ Check **Enable Kubernetes** $\rightarrow$ Apply & restart.
-2. **`kubectl`** CLI tool installed and configured to point to `docker-desktop` context:
-   ```powershell
-   kubectl config current-context
-   # Expected output: docker-desktop
-   ```
+### Ingress (`cloud-ide.local`)
+- **Ingress Resource**: [`k8s/ingress.yaml`](file:///c:/Users/Welcome/Documents/projects/Cloud-IDE/k8s/ingress.yaml) routes traffic based on hostname `cloud-ide.local`:
+  - `/api` $\rightarrow$ `backend:8088`
+  - `/` $\rightarrow$ `frontend:80`
+- **Hosts File Configuration**:
+  To access via Ingress when an Ingress controller (e.g., Ingress-Nginx) is enabled, map `127.0.0.1` in your hosts file (`C:\Windows\System32\drivers\etc\hosts` or `/etc/hosts`):
+  ```text
+  127.0.0.1 cloud-ide.local
+  ```
+  Then browse to [http://cloud-ide.local](http://cloud-ide.local).
+
+### NodePort Fallback
+- **Frontend NodePort**: Port **`30080`** (`http://localhost:30080`) is maintained as a reliable development access method without requiring external DNS or Ingress controllers.
 
 ---
 
-## 3. Step-by-Step Deployment Guide
+## 3. High Availability, Scaling & Rolling Updates
 
-### Step 1: Build Local Docker Images
+### Replica Configuration
+- **Frontend**: `replicas: 2` (stateless Nginx + React bundle).
+- **Backend**: `replicas: 2` (stateless Spring Boot REST API).
+- **MySQL**: `replicas: 1` (single-instance persistent database bound to `mysql-pvc`).
 
-Ensure local Docker images exist in Docker Desktop before deploying to Kubernetes:
+### Zero-Downtime Rolling Updates
+Deployments utilize `strategy.type: RollingUpdate` with:
+- `maxUnavailable: 0` (guarantees at least 2 active pods at all times during rollout).
+- `maxSurge: 1` (spins up new version pod before tearing down old version).
 
+### Pod Disruption Budget (PDB)
+[`k8s/pdb.yaml`](file:///c:/Users/Welcome/Documents/projects/Cloud-IDE/k8s/pdb.yaml) defines `minAvailable: 1` for both `backend` and `frontend` deployments, preventing voluntary disruptions (node drains, cluster upgrades) from causing downtime.
+
+### Horizontal Pod Autoscaling (HPA) & Metrics Status
+- `metrics-server` is not installed by default in Docker Desktop Kubernetes (`Error from server (NotFound): deployments.apps "metrics-server" not found`).
+- HPA is therefore **deferred** until a production cluster with metrics-server / Prometheus adapter is configured.
+- Manual scaling is fully supported and verified via `kubectl scale deployment <name> --replicas=N -n cloud-ide`.
+
+---
+
+## 4. Health Checks & Graceful Shutdown
+
+1. **Startup Probes**:
+   - `backend`: `httpGet /api/health` on port 8088 (`failureThreshold: 12`, `periodSeconds: 5`). Allows slow Spring Boot bootups without trigger premature liveness kills.
+   - `frontend`: `httpGet /` on port 80.
+   - `mysql`: `mysqladmin ping` via exec probe (`failureThreshold: 12`, `periodSeconds: 5`).
+2. **Readiness Probes**:
+   - Traffic is only routed to pods once readiness probes succeed.
+3. **Liveness Probes**:
+   - Continuously verify service health and automatically restart deadlocked containers.
+4. **Graceful Shutdown**:
+   - Backend configured with `server.shutdown=graceful` and `spring.lifecycle.timeout-per-shutdown-phase=20s`.
+   - Pod spec sets `terminationGracePeriodSeconds: 30`, allowing in-flight HTTP requests and database queries to finish cleanly before termination.
+
+---
+
+## 5. Security Hardening & RBAC
+
+- **RBAC**: Application pods do not interact with the Kubernetes API. `automountServiceAccountToken: false` is configured on all pods to eliminate credential token exposure.
+- **Rootless Execution**: Backend and sandbox containers run as unprivileged users (`runAsNonRoot: true`, `allowPrivilegeEscalation: false`).
+- **Network Isolation**: Ephemeral code execution sandboxes run with `--network none` on the host, preventing network access or lateral movement.
+- **Docker Socket Isolation**: `/var/run/docker.sock` is **never** mounted in Kubernetes pods.
+- **Secrets Management**: Sensitive credentials (`MYSQL_PASSWORD`, `JWT_SECRET`, `EXECUTION_WORKER_SECRET`) are stored in Kubernetes Secrets (`cloud-ide-secrets`).
+
+---
+
+## 6. Deployment & Operation Commands
+
+### Deploy All Resources
 ```powershell
-# Build Frontend Image
-docker build -t cloud-ide-frontend:latest .
-
-# Build Backend Image
-docker build -t cloud-ide-backend:latest ./backend
-```
-
-### Step 2: Create Namespace & Secret
-
-Create the `cloud-ide` namespace and the secret containing database credentials, JWT secret, and execution worker secret:
-
-#### Windows PowerShell:
-```powershell
-# 1. Create namespace
-kubectl apply -f k8s/namespace.yaml
-
-# 2. Create the Secret with your credentials
-kubectl create secret generic cloud-ide-secrets `
-  --namespace cloud-ide `
-  --from-literal=MYSQL_ROOT_PASSWORD="root_secret" `
-  --from-literal=MYSQL_USER="cloudide" `
-  --from-literal=MYSQL_PASSWORD="cloudide_secret" `
-  --from-literal=JWT_SECRET="404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970" `
-  --from-literal=EXECUTION_WORKER_SECRET="e4f9b2c8a1d743e09876543210fedcba876543210fedcba09876543210fedcba"
-```
-
-#### Linux / macOS / Bash:
-```bash
-# 1. Create namespace
-kubectl apply -f k8s/namespace.yaml
-
-# 2. Create the Secret with your credentials
-kubectl create secret generic cloud-ide-secrets \
-  --namespace cloud-ide \
-  --from-literal=MYSQL_ROOT_PASSWORD="root_secret" \
-  --from-literal=MYSQL_USER="cloudide" \
-  --from-literal=MYSQL_PASSWORD="cloudide_secret" \
-  --from-literal=JWT_SECRET="404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970" \
-  --from-literal=EXECUTION_WORKER_SECRET="e4f9b2c8a1d743e09876543210fedcba876543210fedcba09876543210fedcba"
-```
-
-### Step 3: Deploy Manifests via Kustomize
-
-Apply all Kubernetes manifests:
-
-```powershell
+# 1. Apply namespace, configs, PVCs, deployments, services, ingress, and PDB
 kubectl apply -k k8s/
+
+# 2. Verify all pods and services are Running and Ready (2/2 frontend, 2/2 backend, 1/1 mysql)
+kubectl get pods,svc,ingress,pdb -n cloud-ide
 ```
 
-### Step 4: Verify Deployment Status
-
-Check that all pods, services, and PVCs are running and Ready:
-
+### Manual Scaling
 ```powershell
-# Check Pods
-kubectl get pods -n cloud-ide
+# Scale backend to 3 replicas
+kubectl scale deployment backend --replicas=3 -n cloud-ide
 
-# Check Services
-kubectl get svc -n cloud-ide
-
-# Check Persistent Volume Claims
-kubectl get pvc -n cloud-ide
-
-# Check Deployments
-kubectl get deployments -n cloud-ide
+# Scale backend back to 2 replicas
+kubectl scale deployment backend --replicas=2 -n cloud-ide
 ```
 
-Expected output:
-```text
-NAME                        READY   STATUS    RESTARTS   AGE
-backend-xxxxxxxxxx-xxxxx    1/1     Running   0          1m
-frontend-xxxxxxxxxx-xxxxx   1/1     Running   0          1m
-mysql-xxxxxxxxxx-xxxxx      1/1     Running   0          1m
-```
-
----
-
-## 4. Accessing the Application
-
-- **Frontend Web UI**: Open [http://localhost:30080](http://localhost:30080) in your web browser.
-- **Backend Health Check (via Nginx)**: [http://localhost:30080/api/health](http://localhost:30080/api/health)
-- **Execution Engine Health Check**: [http://localhost:30080/api/execution/health](http://localhost:30080/api/execution/health)
-
----
-
-## 5. Starting the Execution Worker (Host)
-
-In Phase 9.2, the Execution Worker continues running natively on the host to manage Docker sandboxes securely without exposing Docker sockets inside Kubernetes:
-
+### Rolling Updates & Rollback
 ```powershell
-cd execution-worker
-$env:EXECUTION_WORKER_SECRET="e4f9b2c8a1d743e09876543210fedcba876543210fedcba09876543210fedcba"
-mvn spring-boot:run
+# Trigger rollout restart
+kubectl rollout restart deployment/backend -n cloud-ide
+
+# Check rollout progress
+kubectl rollout status deployment/backend -n cloud-ide
+
+# View rollout history
+kubectl rollout history deployment/backend -n cloud-ide
+
+# Rollback to previous revision
+kubectl rollout undo deployment/backend -n cloud-ide
 ```
 
----
-
-## 6. Logs & Troubleshooting
-
+### Inspect Logs
 ```powershell
-# View Backend logs
+# Backend logs (all replicas)
 kubectl logs -l app=backend -n cloud-ide -f
 
-# View Frontend logs
+# Frontend logs
 kubectl logs -l app=frontend -n cloud-ide -f
 
-# View MySQL logs
+# MySQL logs
 kubectl logs -l app=mysql -n cloud-ide -f
-
-# Describe Pod for debugging events
-kubectl describe pod -l app=backend -n cloud-ide
 ```
 
----
-
-## 7. Teardown / Cleanup
-
-To delete all Cloud IDE Kubernetes resources:
-
+### Teardown (Preserving Database Volume)
 ```powershell
+# Delete all resources except PVC
 kubectl delete -k k8s/
-```
 
-To delete the persistent MySQL volume claim as well:
-```powershell
+# To explicitly delete persistent storage:
 kubectl delete pvc mysql-pvc -n cloud-ide
 ```
 
 ---
 
-## 8. Docker Compose vs Local Kubernetes
+## 7. Comparative Architecture Matrix
 
-| Aspect | Docker Compose (`docker compose up`) | Local Kubernetes (`kubectl apply -k k8s/`) |
-| :--- | :--- | :--- |
-| **Frontend URL** | `http://localhost:5173` | `http://localhost:30080` |
-| **Backend Port** | `8088` (Host port published) | `8088` (ClusterIP internal) |
-| **MySQL Port** | `3306` (Internal container port) | `3306` (ClusterIP internal) |
-| **Configuration** | `.env` / `docker-compose.yml` | `ConfigMap` / `Secret` |
-| **Storage** | Named Docker volume `cloud_ide_mysql_data` | Kubernetes `PersistentVolumeClaim` (5Gi) |
-| **Worker Location** | Host (`host.docker.internal:8090`) | Host (`host.docker.internal:8090`) |
+| Aspect | Docker Compose | Local Kubernetes (Phase 9.3) | Future Production (Phase 9.4+) |
+| :--- | :--- | :--- | :--- |
+| **Frontend Access** | `http://localhost:5173` | `http://cloud-ide.local` / `http://localhost:30080` | `https://cloud-ide.io` (TLS Ingress / CDN) |
+| **Backend Replicas** | 1 container | 2 pods (RollingUpdate, PDB) | Auto-scaling (HPA / KEDA) |
+| **Frontend Replicas** | 1 container | 2 pods (RollingUpdate, PDB) | Auto-scaling (HPA) |
+| **MySQL** | Docker container | 1 pod + 5Gi PVC | Managed Cloud DB (AWS RDS / Cloud SQL) |
+| **Code Execution** | Host Worker (`8090`) | Host Worker (`8090`) | Asynchronous Queue + MicroVMs (gVisor/Firecracker) |

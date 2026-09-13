@@ -8,7 +8,12 @@ metadata:
     app.kubernetes.io/name: cloud-ide
     app.kubernetes.io/component: backend
 spec:
-  replicas: 1
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
   selector:
     matchLabels:
       app: backend
@@ -19,6 +24,8 @@ spec:
         app.kubernetes.io/name: cloud-ide
         app.kubernetes.io/component: backend
     spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
@@ -98,19 +105,27 @@ spec:
               memory: 512Mi
           securityContext:
             allowPrivilegeEscalation: false
+          startupProbe:
+            httpGet:
+              path: /api/health
+              port: 8088
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 12
           readinessProbe:
             httpGet:
               path: /api/health
               port: 8088
-            initialDelaySeconds: 15
+            initialDelaySeconds: 5
             periodSeconds: 5
             timeoutSeconds: 3
-            failureThreshold: 6
+            failureThreshold: 3
           livenessProbe:
             httpGet:
               path: /api/health
               port: 8088
-            initialDelaySeconds: 30
+            initialDelaySeconds: 15
             periodSeconds: 10
             timeoutSeconds: 3
             failureThreshold: 3

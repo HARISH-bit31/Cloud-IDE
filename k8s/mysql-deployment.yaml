@@ -21,6 +21,7 @@ spec:
         app.kubernetes.io/name: cloud-ide
         app.kubernetes.io/component: database
     spec:
+      automountServiceAccountToken: false
       containers:
         - name: mysql
           image: mysql:8.0
@@ -59,7 +60,7 @@ spec:
             limits:
               cpu: 500m
               memory: 512Mi
-          readinessProbe:
+          startupProbe:
             exec:
               command:
                 - sh
@@ -68,14 +69,24 @@ spec:
             initialDelaySeconds: 10
             periodSeconds: 5
             timeoutSeconds: 3
-            failureThreshold: 6
+            failureThreshold: 12
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - "-c"
+                - "mysqladmin ping -h localhost -u root -p${MYSQL_ROOT_PASSWORD}"
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
           livenessProbe:
             exec:
               command:
                 - sh
                 - "-c"
                 - "mysqladmin ping -h localhost -u root -p${MYSQL_ROOT_PASSWORD}"
-            initialDelaySeconds: 30
+            initialDelaySeconds: 15
             periodSeconds: 10
             timeoutSeconds: 3
             failureThreshold: 3
