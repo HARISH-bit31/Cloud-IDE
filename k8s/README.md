@@ -1,6 +1,8 @@
-# Cloud IDE — Kubernetes Deployment (Phase 9.1)
+# Cloud IDE — Kubernetes Deployment (Phase 9.2)
 
-This directory contains the Kubernetes manifests for deploying the Cloud IDE application (Frontend, Backend, MySQL) to a local Kubernetes cluster such as **Docker Desktop Kubernetes**.
+This directory contains the Kubernetes manifests for deploying the Cloud IDE application (Frontend, Backend, MySQL, Network Policies) to a local Kubernetes cluster such as **Docker Desktop Kubernetes**.
+
+For an in-depth analysis of the security boundary, host communication, and future cloud execution architectures, refer to [`execution-worker-architecture.md`](file:///c:/Users/Welcome/Documents/projects/Cloud-IDE/k8s/execution-worker-architecture.md).
 
 ---
 
@@ -154,7 +156,7 @@ mysql-xxxxxxxxxx-xxxxx      1/1     Running   0          1m
 
 ## 5. Starting the Execution Worker (Host)
 
-In Phase 9.1, the Execution Worker continues running on the host to manage Docker sandboxes securely without exposing Docker sockets inside Kubernetes:
+In Phase 9.2, the Execution Worker continues running natively on the host to manage Docker sandboxes securely without exposing Docker sockets inside Kubernetes:
 
 ```powershell
 cd execution-worker

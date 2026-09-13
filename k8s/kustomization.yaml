@@ -13,3 +13,4 @@ resources:
   - backend-service.yaml
   - frontend-deployment.yaml
   - frontend-service.yaml
+  - network-policy.yaml

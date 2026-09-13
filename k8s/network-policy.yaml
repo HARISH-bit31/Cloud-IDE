@@ -1,0 +1,120 @@
+# Kubernetes NetworkPolicy for Cloud IDE
+# Defines pod-to-pod network traffic isolation within namespace: cloud-ide
+#
+# NOTE: NetworkPolicy enforcement requires a network plugin (CNI) that supports
+# policy enforcement (e.g., Calico, Cilium). On standard Docker Desktop Kubernetes
+# (kindnet default), these policies serve as declarative security intent and take
+# active enforcement once a compliant CNI is installed.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: frontend-network-policy
+  namespace: cloud-ide
+  labels:
+    app.kubernetes.io/name: cloud-ide
+    app.kubernetes.io/component: frontend
+spec:
+  podSelector:
+    matchLabels:
+      app: frontend
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow inbound web traffic from external clients / NodePort / Ingress
+    - ports:
+        - protocol: TCP
+          port: 80
+  egress:
+    # Allow frontend to proxy API requests to backend pod
+    - to:
+        - podSelector:
+            matchLabels:
+              app: backend
+      ports:
+        - protocol: TCP
+          port: 8088
+    # Allow CoreDNS for service resolution
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: backend-network-policy
+  namespace: cloud-ide
+  labels:
+    app.kubernetes.io/name: cloud-ide
+    app.kubernetes.io/component: backend
+spec:
+  podSelector:
+    matchLabels:
+      app: backend
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Only allow inbound traffic originating from the Frontend proxy
+    - from:
+        - podSelector:
+            matchLabels:
+              app: frontend
+      ports:
+        - protocol: TCP
+          port: 8088
+  egress:
+    # Allow backend to communicate with MySQL database
+    - to:
+        - podSelector:
+            matchLabels:
+              app: mysql
+      ports:
+        - protocol: TCP
+          port: 3306
+    # Allow CoreDNS for service resolution
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Allow egress to external host Execution Worker (host.docker.internal:8090)
+    - ports:
+        - protocol: TCP
+          port: 8090
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mysql-network-policy
+  namespace: cloud-ide
+  labels:
+    app.kubernetes.io/name: cloud-ide
+    app.kubernetes.io/component: database
+spec:
+  podSelector:
+    matchLabels:
+      app: mysql
+  policyTypes:
+    - Ingress
+  ingress:
+    # Strictly restrict MySQL database access to the Backend pod only
+    - from:
+        - podSelector:
+            matchLabels:
+              app: backend
+      ports:
+        - protocol: TCP
+          port: 3306
