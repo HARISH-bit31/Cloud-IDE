@@ -214,9 +214,9 @@ Cloud IDE is being prepared for AWS deployment (target architecture: ALB -> ECS/
 
 ---
 
-## 🔄 Continuous Integration (Phase 11.1)
+## 🔄 Continuous Integration & Deployment (Phase 11.1 & 11.2)
 
-Cloud IDE includes an automated Jenkins Declarative CI Pipeline defined in [`Jenkinsfile`](file:///c:/Users/Welcome/Documents/projects/Cloud-IDE/Jenkinsfile).
+Cloud IDE includes an automated Jenkins Declarative CI/CD Pipeline defined in [`Jenkinsfile`](file:///c:/Users/Welcome/Documents/projects/Cloud-IDE/Jenkinsfile).
 
 ### Pipeline Stages:
 1. **Checkout**: Automatically checks out the `main` branch from GitHub.
@@ -225,7 +225,12 @@ Cloud IDE includes an automated Jenkins Declarative CI Pipeline defined in [`Jen
 4. **Worker Tests**: Executes all 6 execution worker sandbox tests via `mvn clean test`.
 5. **Docker Compose Validation**: Verifies Compose configuration syntax via `docker compose config`.
 6. **Docker Image Build**: Compiles hardened production container images tagged with the unique build number (`build-${BUILD_NUMBER}`).
-7. **Test Reporting**: Collects and publishes JUnit test results (`**/target/surefire-reports/*.xml`).
+7. **Kubernetes Preflight** *(Gate: `DEPLOY_TO_LOCAL_K8S`)*: Verifies cluster context, namespace, and image readiness.
+8. **Deploy Frontend & Backend** *(Gate: `DEPLOY_TO_LOCAL_K8S`)*: Updates deployment image references via `kubectl set image`.
+9. **Wait for Rollout** *(Gate: `DEPLOY_TO_LOCAL_K8S`)*: Awaits rolling update completion with probe verification.
+10. **Health & Regression Verification** *(Gate: `DEPLOY_TO_LOCAL_K8S`)*: Runs automated smoke tests (`scripts/smoke_test.cjs`) verifying 8 health/observability endpoints.
+11. **Post Actions & Automatic Rollback**: Collects JUnit reports; triggers automatic rollback (`kubectl rollout undo`) upon failure.
 
-For setup instructions, Jenkins configuration, and Windows agent compatibility guidelines, see [`docs/ci-cd/phase-11.1-jenkins.md`](file:///c:/Users/Welcome/Documents/projects/Cloud-IDE/docs/ci-cd/phase-11.1-jenkins.md).
-
+For setup instructions and deployment details:
+- CI Pipeline Guide: [`docs/ci-cd/phase-11.1-jenkins.md`](file:///c:/Users/Welcome/Documents/projects/Cloud-IDE/docs/ci-cd/phase-11.1-jenkins.md)
+- Local Kubernetes Deployment Guide: [`docs/ci-cd/phase-11.2-local-kubernetes-deployment.md`](file:///c:/Users/Welcome/Documents/projects/Cloud-IDE/docs/ci-cd/phase-11.2-local-kubernetes-deployment.md)
