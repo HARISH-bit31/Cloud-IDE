@@ -19,9 +19,6 @@ pipeline {
     environment {
         // Unique build tag based on Jenkins build number
         IMAGE_TAG = "build-${env.BUILD_NUMBER ?: 'manual'}"
-        // Ensure kubectl and docker find the correct configuration in Windows service or local agent contexts
-        KUBECONFIG = env.KUBECONFIG ?: (isUnix() ? "${env.HOME}/.kube/config" : 'C:\\Users\\Welcome\\.kube\\config')
-        DOCKER_CONFIG = env.DOCKER_CONFIG ?: (isUnix() ? "${env.HOME}/.docker" : 'C:\\Users\\Welcome\\.docker')
     }
 
     options {
@@ -34,6 +31,16 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
+                script {
+                    // Resolve OS-dependent configuration paths dynamically at runtime
+                    if (!env.KUBECONFIG) {
+                        env.KUBECONFIG = isUnix() ? "${env.HOME}/.kube/config" : 'C:\\Users\\Welcome\\.kube\\config'
+                    }
+                    if (!env.DOCKER_CONFIG) {
+                        env.DOCKER_CONFIG = isUnix() ? "${env.HOME}/.docker" : 'C:\\Users\\Welcome\\.docker'
+                    }
+                }
+                echo '=== Stage 1/14: Checking out source code and configuring environment ==='
                 // Check out the configured branch from Git SCM
                 checkout scm
             }
@@ -41,7 +48,7 @@ pipeline {
 
         stage('Secret Scanning Gate') {
             steps {
-                echo '=== Stage 2/12: Scanning repository for hardcoded secrets, keys, and tokens ==='
+                echo '=== Stage 2/14: Scanning repository for hardcoded secrets, keys, and tokens ==='
                 script {
                     if (isUnix()) {
                         sh 'node scripts/scan_secrets.cjs'
@@ -54,7 +61,7 @@ pipeline {
 
         stage('Frontend Quality & Lint') {
             steps {
-                echo '=== Stage 3/12: Running frontend static analysis and TypeScript verification ==='
+                echo '=== Stage 3/14: Running frontend static analysis and TypeScript verification ==='
                 script {
                     if (isUnix()) {
                         sh 'npm ci'
@@ -69,7 +76,7 @@ pipeline {
 
         stage('Frontend Build') {
             steps {
-                echo '=== Stage 4/12: Compiling production Vite assets ==='
+                echo '=== Stage 4/14: Compiling production Vite assets ==='
                 script {
                     if (isUnix()) {
                         sh 'npm run build'
@@ -82,7 +89,7 @@ pipeline {
 
         stage('Dependency Security Audit') {
             steps {
-                echo '=== Stage 5/12: Auditing npm and Maven dependencies for known vulnerabilities ==='
+                echo '=== Stage 5/14: Auditing npm and Maven dependencies for known vulnerabilities ==='
                 script {
                     if (isUnix()) {
                         sh 'node scripts/audit_dependencies.cjs'
@@ -95,7 +102,7 @@ pipeline {
 
         stage('Backend Tests') {
             steps {
-                echo '=== Stage 6/12: Compiling backend and running unit/security tests ==='
+                echo '=== Stage 6/14: Compiling backend and running unit/security tests ==='
                 dir('backend') {
                     script {
                         if (isUnix()) {
@@ -110,7 +117,7 @@ pipeline {
 
         stage('Worker Tests') {
             steps {
-                echo '=== Stage 7/12: Compiling execution worker and running unit/security tests ==='
+                echo '=== Stage 7/14: Compiling execution worker and running unit/security tests ==='
                 dir('execution-worker') {
                     script {
                         if (isUnix()) {
@@ -125,7 +132,7 @@ pipeline {
 
         stage('Docker Compose Validation') {
             steps {
-                echo '=== Stage 8/12: Validating Docker Compose configuration schema ==='
+                echo '=== Stage 8/14: Validating Docker Compose configuration schema ==='
                 script {
                     if (isUnix()) {
                         sh 'docker compose config'
@@ -138,8 +145,11 @@ pipeline {
 
         stage('Docker Image Build') {
             steps {
-                echo "=== Stage 9/12: Building production Docker images with tag: ${env.IMAGE_TAG} ==="
+                echo "=== Stage 9/14: Building production Docker images with tag: ${env.IMAGE_TAG} ==="
                 script {
+                    if (!env.DOCKER_CONFIG) {
+                        env.DOCKER_CONFIG = isUnix() ? "${env.HOME}/.docker" : 'C:\\Users\\Welcome\\.docker'
+                    }
                     def frontendImage = "cloud-ide-frontend:${env.IMAGE_TAG}"
                     def backendImage = "cloud-ide-backend:${env.IMAGE_TAG}"
 
@@ -156,7 +166,7 @@ pipeline {
 
         stage('Docker Security Verification') {
             steps {
-                echo "=== Stage 10/12: Verifying container runtime security and isolation flags ==="
+                echo '=== Stage 10/14: Verifying container runtime security and isolation flags ==='
                 script {
                     if (isUnix()) {
                         sh "node scripts/verify_docker_security.cjs ${env.IMAGE_TAG}"
@@ -176,6 +186,9 @@ pipeline {
             steps {
                 echo '=== Stage 11/14: Verifying Kubernetes cluster readiness, context, and namespace ==='
                 script {
+                    if (!env.KUBECONFIG) {
+                        env.KUBECONFIG = isUnix() ? "${env.HOME}/.kube/config" : 'C:\\Users\\Welcome\\.kube\\config'
+                    }
                     if (isUnix()) {
                         sh 'kubectl version --client'
                         sh 'kubectl config current-context'
@@ -267,6 +280,9 @@ pipeline {
         failure {
             script {
                 if (params.DEPLOY_TO_LOCAL_K8S) {
+                    if (!env.KUBECONFIG) {
+                        env.KUBECONFIG = isUnix() ? "${env.HOME}/.kube/config" : 'C:\\Users\\Welcome\\.kube\\config'
+                    }
                     echo "[Rollback] Pipeline failed during or after deployment. Initiating automated rollback to previous deployment revision..."
                     if (isUnix()) {
                         sh 'kubectl rollout undo deployment/backend -n cloud-ide || true'
