@@ -200,3 +200,32 @@ For complete details, see [`k8s/README.md`](file:///c:/Users/Welcome/Documents/p
 | `SERVER_PORT` | `8088` | `8088` | `8088` | Backend server port |
 | `FRONTEND_PORT` | `5173` | `5173` | `30080` | Frontend web port |
 
+---
+
+## ☁️ AWS Deployment (Phase 10.1)
+
+Cloud IDE is being prepared for AWS deployment (target architecture: ALB -> ECS/Fargate -> RDS MySQL).
+
+### Phase 10.1: AWS Foundation & ECR Preparation
+- **Registry:** Private Amazon Elastic Container Registry (ECR) for `cloud-ide-frontend` and `cloud-ide-backend`.
+- **Image Hardening:** Multi-stage minimal Alpine production builds, non-root backend runtime, credentials excluded via `.dockerignore`.
+- **Security:** Least-privilege IAM policies, no long-lived root credentials, immutable image tagging (`phase10.1`).
+- **Documentation:** For setup instructions, AWS CLI prerequisites, and ECR pushing workflows, see [`docs/aws/phase-10.1-foundation.md`](file:///c:/Users/Welcome/Documents/projects/Cloud-IDE/docs/aws/phase-10.1-foundation.md).
+
+---
+
+## 🔄 Continuous Integration (Phase 11.1)
+
+Cloud IDE includes an automated Jenkins Declarative CI Pipeline defined in [`Jenkinsfile`](file:///c:/Users/Welcome/Documents/projects/Cloud-IDE/Jenkinsfile).
+
+### Pipeline Stages:
+1. **Checkout**: Automatically checks out the `main` branch from GitHub.
+2. **Frontend Build**: Restores dependencies via `npm ci` and compiles the Vite production bundle via `npm run build`.
+3. **Backend Tests**: Executes all 19 Spring Boot unit, security, and queue tests via `mvn clean test`.
+4. **Worker Tests**: Executes all 6 execution worker sandbox tests via `mvn clean test`.
+5. **Docker Compose Validation**: Verifies Compose configuration syntax via `docker compose config`.
+6. **Docker Image Build**: Compiles hardened production container images tagged with the unique build number (`build-${BUILD_NUMBER}`).
+7. **Test Reporting**: Collects and publishes JUnit test results (`**/target/surefire-reports/*.xml`).
+
+For setup instructions, Jenkins configuration, and Windows agent compatibility guidelines, see [`docs/ci-cd/phase-11.1-jenkins.md`](file:///c:/Users/Welcome/Documents/projects/Cloud-IDE/docs/ci-cd/phase-11.1-jenkins.md).
+

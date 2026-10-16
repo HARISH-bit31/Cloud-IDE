@@ -3,7 +3,13 @@ dist/
 .git/
 .vscode/
 backend/
+execution-worker/
+docker/
+k8s/
+scratch/
+docs/
+*.md
 *.log
 .env
-.env.local
+.env.*
 .DS_Store
