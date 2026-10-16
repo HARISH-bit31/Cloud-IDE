@@ -5,12 +5,19 @@ pipeline {
         booleanParam(
             name: 'DEPLOY_TO_LOCAL_K8S',
             defaultValue: false,
-            description: 'Deploy built images to the local Docker Desktop Kubernetes cluster (cloud-ide namespace) after all tests pass.'
+            description: 'Deploy built images to the local Docker Desktop Kubernetes cluster (cloud-ide namespace) after all quality gates pass.'
         )
     }
 
+    triggers {
+        // Safe SCM polling for local development without exposing Jenkins to the internet
+        pollSCM('H/5 * * * *')
+        // GitHub Push Trigger (activated when webhooks are routed to Jenkins)
+        githubPush()
+    }
+
     environment {
-        // Generate unique build tag from Jenkins build number
+        // Unique build tag based on Jenkins build number
         IMAGE_TAG = "build-${env.BUILD_NUMBER ?: 'manual'}"
         // Ensure kubectl and docker find the correct configuration in Windows service or local agent contexts
         KUBECONFIG = env.KUBECONFIG ?: (isUnix() ? "${env.HOME}/.kube/config" : 'C:\\Users\\Welcome\\.kube\\config')
@@ -32,16 +39,55 @@ pipeline {
             }
         }
 
-        stage('Frontend Build') {
+        stage('Secret Scanning Gate') {
             steps {
-                echo '=== Stage 2/10: Installing frontend dependencies and building production assets ==='
+                echo '=== Stage 2/12: Scanning repository for hardcoded secrets, keys, and tokens ==='
+                script {
+                    if (isUnix()) {
+                        sh 'node scripts/scan_secrets.cjs'
+                    } else {
+                        bat 'call node scripts/scan_secrets.cjs'
+                    }
+                }
+            }
+        }
+
+        stage('Frontend Quality & Lint') {
+            steps {
+                echo '=== Stage 3/12: Running frontend static analysis and TypeScript verification ==='
                 script {
                     if (isUnix()) {
                         sh 'npm ci'
-                        sh 'npm run build'
+                        sh 'npm run lint'
                     } else {
                         bat 'call npm ci'
+                        bat 'call npm run lint'
+                    }
+                }
+            }
+        }
+
+        stage('Frontend Build') {
+            steps {
+                echo '=== Stage 4/12: Compiling production Vite assets ==='
+                script {
+                    if (isUnix()) {
+                        sh 'npm run build'
+                    } else {
                         bat 'call npm run build'
+                    }
+                }
+            }
+        }
+
+        stage('Dependency Security Audit') {
+            steps {
+                echo '=== Stage 5/12: Auditing npm and Maven dependencies for known vulnerabilities ==='
+                script {
+                    if (isUnix()) {
+                        sh 'node scripts/audit_dependencies.cjs'
+                    } else {
+                        bat 'call node scripts/audit_dependencies.cjs'
                     }
                 }
             }
@@ -49,7 +95,7 @@ pipeline {
 
         stage('Backend Tests') {
             steps {
-                echo '=== Stage 3/10: Compiling backend and running unit/security tests ==='
+                echo '=== Stage 6/12: Compiling backend and running unit/security tests ==='
                 dir('backend') {
                     script {
                         if (isUnix()) {
@@ -64,7 +110,7 @@ pipeline {
 
         stage('Worker Tests') {
             steps {
-                echo '=== Stage 4/10: Compiling execution worker and running unit/security tests ==='
+                echo '=== Stage 7/12: Compiling execution worker and running unit/security tests ==='
                 dir('execution-worker') {
                     script {
                         if (isUnix()) {
@@ -79,7 +125,7 @@ pipeline {
 
         stage('Docker Compose Validation') {
             steps {
-                echo '=== Stage 5/10: Validating Docker Compose configuration schema ==='
+                echo '=== Stage 8/12: Validating Docker Compose configuration schema ==='
                 script {
                     if (isUnix()) {
                         sh 'docker compose config'
@@ -92,7 +138,7 @@ pipeline {
 
         stage('Docker Image Build') {
             steps {
-                echo "=== Stage 6/10: Building production Docker images with tag: ${env.IMAGE_TAG} ==="
+                echo "=== Stage 9/12: Building production Docker images with tag: ${env.IMAGE_TAG} ==="
                 script {
                     def frontendImage = "cloud-ide-frontend:${env.IMAGE_TAG}"
                     def backendImage = "cloud-ide-backend:${env.IMAGE_TAG}"
@@ -108,12 +154,27 @@ pipeline {
             }
         }
 
+        stage('Docker Security Verification') {
+            steps {
+                echo "=== Stage 10/12: Verifying container runtime security and isolation flags ==="
+                script {
+                    if (isUnix()) {
+                        sh "node scripts/verify_docker_security.cjs ${env.IMAGE_TAG}"
+                    } else {
+                        bat "call node scripts/verify_docker_security.cjs ${env.IMAGE_TAG}"
+                    }
+                }
+            }
+        }
+
         stage('Kubernetes Preflight') {
             when {
-                expression { params.DEPLOY_TO_LOCAL_K8S == true }
+                expression {
+                    return params.DEPLOY_TO_LOCAL_K8S == true && (env.CHANGE_ID == null)
+                }
             }
             steps {
-                echo '=== Stage 7/10: Verifying Kubernetes cluster readiness, context, and namespace ==='
+                echo '=== Stage 11/14: Verifying Kubernetes cluster readiness, context, and namespace ==='
                 script {
                     if (isUnix()) {
                         sh 'kubectl version --client'
@@ -136,10 +197,12 @@ pipeline {
 
         stage('Deploy Frontend and Backend') {
             when {
-                expression { params.DEPLOY_TO_LOCAL_K8S == true }
+                expression {
+                    return params.DEPLOY_TO_LOCAL_K8S == true && (env.CHANGE_ID == null)
+                }
             }
             steps {
-                echo "=== Stage 8/10: Updating Kubernetes deployments with image tag: ${env.IMAGE_TAG} ==="
+                echo "=== Stage 12/14: Updating Kubernetes deployments with image tag: ${env.IMAGE_TAG} ==="
                 script {
                     def frontendImage = "cloud-ide-frontend:${env.IMAGE_TAG}"
                     def backendImage = "cloud-ide-backend:${env.IMAGE_TAG}"
@@ -157,10 +220,12 @@ pipeline {
 
         stage('Wait for Rollout Completion') {
             when {
-                expression { params.DEPLOY_TO_LOCAL_K8S == true }
+                expression {
+                    return params.DEPLOY_TO_LOCAL_K8S == true && (env.CHANGE_ID == null)
+                }
             }
             steps {
-                echo '=== Stage 9/10: Waiting for rolling updates to complete ==='
+                echo '=== Stage 13/14: Waiting for rolling updates to complete ==='
                 script {
                     if (isUnix()) {
                         sh 'kubectl rollout status deployment/backend -n cloud-ide --timeout=180s'
@@ -177,10 +242,12 @@ pipeline {
 
         stage('Health and Regression Verification') {
             when {
-                expression { params.DEPLOY_TO_LOCAL_K8S == true }
+                expression {
+                    return params.DEPLOY_TO_LOCAL_K8S == true && (env.CHANGE_ID == null)
+                }
             }
             steps {
-                echo '=== Stage 10/10: Running automated health and regression verification ==='
+                echo '=== Stage 14/14: Running automated health and regression verification ==='
                 script {
                     if (isUnix()) {
                         sh 'node scripts/smoke_test.cjs'
@@ -221,9 +288,9 @@ pipeline {
         success {
             script {
                 if (params.DEPLOY_TO_LOCAL_K8S) {
-                    echo "SUCCESS: Cloud IDE built, tested, and successfully deployed to local Kubernetes (Image Tag: ${env.IMAGE_TAG})!"
+                    echo "SUCCESS: Cloud IDE passed all quality & security gates and successfully deployed to local Kubernetes (Image Tag: ${env.IMAGE_TAG})!"
                 } else {
-                    echo "SUCCESS: Cloud IDE CI pipeline completed successfully for build #${env.BUILD_NUMBER} (Image Tag: ${env.IMAGE_TAG}) [Deployment was skipped: DEPLOY_TO_LOCAL_K8S=false]"
+                    echo "SUCCESS: Cloud IDE CI pipeline passed all quality & security gates for build #${env.BUILD_NUMBER} (Image Tag: ${env.IMAGE_TAG}) [Deployment was skipped: DEPLOY_TO_LOCAL_K8S=false]"
                 }
             }
         }

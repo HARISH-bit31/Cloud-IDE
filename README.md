@@ -168,8 +168,8 @@ kubectl create secret generic cloud-ide-secrets `
   --from-literal=MYSQL_ROOT_PASSWORD="root_secret" `
   --from-literal=MYSQL_USER="cloudide" `
   --from-literal=MYSQL_PASSWORD="cloudide_secret" `
-  --from-literal=JWT_SECRET="404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970" `
-  --from-literal=EXECUTION_WORKER_SECRET="e4f9b2c8a1d743e09876543210fedcba876543210fedcba09876543210fedcba"
+  --from-literal=JWT_SECRET="<your-256-bit-hex-jwt-secret>" `
+  --from-literal=EXECUTION_WORKER_SECRET="<your-256-bit-hex-worker-secret>"
 
 # 3. Apply manifests
 kubectl apply -k k8s/
@@ -214,23 +214,28 @@ Cloud IDE is being prepared for AWS deployment (target architecture: ALB -> ECS/
 
 ---
 
-## 🔄 Continuous Integration & Deployment (Phase 11.1 & 11.2)
+## 🔄 Continuous Integration & Deployment (Phase 11.1, 11.2 & 11.3)
 
 Cloud IDE includes an automated Jenkins Declarative CI/CD Pipeline defined in [`Jenkinsfile`](file:///c:/Users/Welcome/Documents/projects/Cloud-IDE/Jenkinsfile).
 
-### Pipeline Stages:
-1. **Checkout**: Automatically checks out the `main` branch from GitHub.
-2. **Frontend Build**: Restores dependencies via `npm ci` and compiles the Vite production bundle via `npm run build`.
-3. **Backend Tests**: Executes all 19 Spring Boot unit, security, and queue tests via `mvn clean test`.
-4. **Worker Tests**: Executes all 6 execution worker sandbox tests via `mvn clean test`.
-5. **Docker Compose Validation**: Verifies Compose configuration syntax via `docker compose config`.
-6. **Docker Image Build**: Compiles hardened production container images tagged with the unique build number (`build-${BUILD_NUMBER}`).
-7. **Kubernetes Preflight** *(Gate: `DEPLOY_TO_LOCAL_K8S`)*: Verifies cluster context, namespace, and image readiness.
-8. **Deploy Frontend & Backend** *(Gate: `DEPLOY_TO_LOCAL_K8S`)*: Updates deployment image references via `kubectl set image`.
-9. **Wait for Rollout** *(Gate: `DEPLOY_TO_LOCAL_K8S`)*: Awaits rolling update completion with probe verification.
-10. **Health & Regression Verification** *(Gate: `DEPLOY_TO_LOCAL_K8S`)*: Runs automated smoke tests (`scripts/smoke_test.cjs`) verifying 8 health/observability endpoints.
-11. **Post Actions & Automatic Rollback**: Collects JUnit reports; triggers automatic rollback (`kubectl rollout undo`) upon failure.
+### Pipeline Stages & Quality Gates:
+1. **Checkout**: Automatically checks out the `main` branch from GitHub (supports SCM Polling `pollSCM` and `githubPush` webhook triggers).
+2. **Secret Scanning Gate**: Scans repository for hardcoded AWS keys, database passwords, JWT secrets, and API tokens (`scripts/scan_secrets.cjs`).
+3. **Frontend Quality & Lint**: Runs static analysis and TypeScript validation via `oxlint` and `tsc -b`.
+4. **Frontend Build**: Restores dependencies via `npm ci` and compiles the Vite production bundle via `npm run build`.
+5. **Dependency Security Audit**: Audits npm and Maven dependencies for known vulnerabilities (`scripts/audit_dependencies.cjs`).
+6. **Backend Tests**: Executes all 19 Spring Boot unit, security, and queue tests via `mvn clean test`.
+7. **Worker Tests**: Executes all 6 execution worker sandbox tests via `mvn clean test`.
+8. **Docker Compose Validation**: Verifies Compose configuration syntax via `docker compose config`.
+9. **Docker Image Build**: Compiles hardened production container images tagged with the unique build number (`build-${BUILD_NUMBER}`).
+10. **Docker Security Verification**: Verifies non-root execution (`appuser`), runtime filesystem sanitization, and daemon socket isolation (`scripts/verify_docker_security.cjs`).
+11. **Kubernetes Preflight** *(Gate: `DEPLOY_TO_LOCAL_K8S`)*: Verifies cluster context, namespace, and image readiness.
+12. **Deploy Frontend & Backend** *(Gate: `DEPLOY_TO_LOCAL_K8S`)*: Updates deployment image references via `kubectl set image`.
+13. **Wait for Rollout** *(Gate: `DEPLOY_TO_LOCAL_K8S`)*: Awaits rolling update completion with probe verification.
+14. **Health & Regression Verification** *(Gate: `DEPLOY_TO_LOCAL_K8S`)*: Runs automated smoke tests (`scripts/smoke_test.cjs`) verifying 8 health/observability endpoints.
+15. **Post Actions & Automatic Rollback**: Collects JUnit reports; triggers automatic rollback (`kubectl rollout undo`) upon failure.
 
 For setup instructions and deployment details:
 - CI Pipeline Guide: [`docs/ci-cd/phase-11.1-jenkins.md`](file:///c:/Users/Welcome/Documents/projects/Cloud-IDE/docs/ci-cd/phase-11.1-jenkins.md)
 - Local Kubernetes Deployment Guide: [`docs/ci-cd/phase-11.2-local-kubernetes-deployment.md`](file:///c:/Users/Welcome/Documents/projects/Cloud-IDE/docs/ci-cd/phase-11.2-local-kubernetes-deployment.md)
+- Quality Gates & Security Checks Guide: [`docs/ci-cd/phase-11.3-quality-security.md`](file:///c:/Users/Welcome/Documents/projects/Cloud-IDE/docs/ci-cd/phase-11.3-quality-security.md)
