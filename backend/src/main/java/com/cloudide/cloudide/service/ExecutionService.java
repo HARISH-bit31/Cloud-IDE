@@ -40,9 +40,11 @@ public class ExecutionService {
 
         if (request.getProjectId() != null) {
             projectRepository.findById(request.getProjectId()).ifPresent(project -> {
-                if (!Objects.equals(project.getUser().getId(), currentUser.getId())) {
-                    log.warn("User {} attempted to execute code under project {} owned by {}",
-                            currentUser.getEmail(), project.getId(), project.getUser().getEmail());
+                if (currentUser == null || project.getUser() == null || !Objects.equals(project.getUser().getId(), currentUser.getId())) {
+                    log.warn("User {} attempted to execute code under project {} with owner {}",
+                            currentUser != null ? currentUser.getEmail() : "null",
+                            project.getId(),
+                            project.getUser() != null ? project.getUser().getEmail() : "null");
                     throw new ForbiddenException("You do not have permission to execute code in this project");
                 }
             });

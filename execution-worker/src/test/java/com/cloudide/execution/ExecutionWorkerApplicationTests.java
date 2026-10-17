@@ -48,6 +48,26 @@ class ExecutionWorkerApplicationTests {
     }
 
     @Test
+    @DisplayName("2b. Request with blank secret header is rejected with 401 Unauthorized")
+    void testRequestWithBlankSecretRejected() throws Exception {
+        mockMvc.perform(get("/internal/health")
+                        .header(SECRET_HEADER, "   "))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.status", is(401)))
+                .andExpect(jsonPath("$.error", is("Unauthorized")));
+    }
+
+    @Test
+    @DisplayName("2c. Request with empty secret header is rejected with 401 Unauthorized")
+    void testRequestWithEmptySecretRejected() throws Exception {
+        mockMvc.perform(get("/internal/health")
+                        .header(SECRET_HEADER, ""))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.status", is(401)))
+                .andExpect(jsonPath("$.error", is("Unauthorized")));
+    }
+
+    @Test
     @DisplayName("3. Health endpoint with valid secret returns UP or DOWN and Docker status")
     void testHealthEndpointWithValidSecret() throws Exception {
         mockMvc.perform(get("/internal/health")

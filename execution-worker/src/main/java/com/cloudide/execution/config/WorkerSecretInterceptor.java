@@ -9,6 +9,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+
 @Component
 public class WorkerSecretInterceptor implements HandlerInterceptor {
 
@@ -34,7 +37,14 @@ public class WorkerSecretInterceptor implements HandlerInterceptor {
 
         String providedSecret = request.getHeader(SECRET_HEADER);
 
-        if (providedSecret == null || !providedSecret.equals(configuredSecret)) {
+        boolean authenticated = false;
+        if (providedSecret != null && !providedSecret.isBlank() && configuredSecret != null && !configuredSecret.isBlank()) {
+            byte[] a = providedSecret.getBytes(StandardCharsets.UTF_8);
+            byte[] b = configuredSecret.getBytes(StandardCharsets.UTF_8);
+            authenticated = MessageDigest.isEqual(a, b);
+        }
+
+        if (!authenticated) {
             log.warn("Unauthorized worker request to {} from remote IP {}", request.getRequestURI(), request.getRemoteAddr());
             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
             response.setContentType("application/json");

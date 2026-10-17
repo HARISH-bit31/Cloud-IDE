@@ -153,13 +153,9 @@ public class UserService {
         return DtoMapper.toUserResponse(saved);
     }
 
+    @Deprecated
     @Transactional
     public User getOrCreateDefaultUser() {
-        return userRepository.findByEmail("alex.developer@cloud-ide.io")
-                .orElseGet(() -> userRepository.save(User.builder()
-                        .name("Alex Developer")
-                        .email("alex.developer@cloud-ide.io")
-                        .password(passwordEncoder.encode("password123"))
-                        .build()));
+        throw new UnsupportedOperationException("Automatic creation of default demo users is disabled for security reasons.");
     }
 }

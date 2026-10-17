@@ -114,9 +114,11 @@ public class ProjectService {
                 .orElseThrow(() -> new ResourceNotFoundException("Project not found with id: " + id));
 
         User currentUser = userService.getCurrentAuthenticatedUser();
-        if (project.getUser() != null && !project.getUser().getId().equals(currentUser.getId())) {
-            log.warn("Security violation: User {} attempted to access project {} owned by user {}",
-                    currentUser.getId(), id, project.getUser().getId());
+        if (currentUser == null || project.getUser() == null || !project.getUser().getId().equals(currentUser.getId())) {
+            log.warn("Security violation: User {} attempted to access project {} with owner {}",
+                    currentUser != null ? currentUser.getId() : "null",
+                    id,
+                    project.getUser() != null ? project.getUser().getId() : "null");
             throw new ForbiddenException("Access denied: You do not own this project");
         }
 

@@ -6,6 +6,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.env.Environment;
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationProvider;
@@ -40,6 +41,7 @@ public class SecurityConfig {
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final UserDetailsService userDetailsService;
     private final ObjectMapper objectMapper;
+    private final Environment environment;
 
     @Value("${app.cors.allowed-origins:http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000}")
     private String[] allowedOrigins;
@@ -47,31 +49,48 @@ public class SecurityConfig {
     public SecurityConfig(
             JwtAuthenticationFilter jwtAuthenticationFilter,
             UserDetailsService userDetailsService,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            Environment environment
     ) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
         this.userDetailsService = userDetailsService;
         this.objectMapper = objectMapper;
+        this.environment = environment;
     }
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+        boolean isDevProfile = Arrays.asList(environment.getActiveProfiles()).contains("dev");
+
         http
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .csrf(AbstractHttpConfigurer::disable)
-                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .headers(headers -> headers.frameOptions(HeadersConfigurer.FrameOptionsConfig::disable))
-                .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/auth/register", "/api/auth/login").permitAll()
-                        .requestMatchers("/api/health", "/api/execution/health").permitAll()
-                        .requestMatchers("/actuator/**").permitAll()
-                        .requestMatchers("/h2-console/**").permitAll()
-                        .requestMatchers("/error").permitAll()
-                        .requestMatchers("/api/auth/me").authenticated()
-                        .requestMatchers("/api/projects/**").authenticated()
-                        .requestMatchers("/api/users/**").authenticated()
-                        .anyRequest().authenticated()
-                )
+                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS));
+
+        // Restrict frame options: allow same-origin only in development for H2 console, deny otherwise
+        if (isDevProfile) {
+            http.headers(headers -> headers.frameOptions(HeadersConfigurer.FrameOptionsConfig::sameOrigin));
+        } else {
+            http.headers(headers -> headers.frameOptions(HeadersConfigurer.FrameOptionsConfig::deny));
+        }
+
+        http
+                .authorizeHttpRequests(auth -> {
+                    auth.requestMatchers("/api/auth/register", "/api/auth/login").permitAll()
+                            .requestMatchers("/api/health", "/api/execution/health").permitAll()
+                            .requestMatchers("/actuator/**").permitAll()
+                            .requestMatchers("/error").permitAll();
+
+                    // Permit H2 console strictly in explicit development profile
+                    if (isDevProfile) {
+                        auth.requestMatchers("/h2-console/**").permitAll();
+                    }
+
+                    auth.requestMatchers("/api/auth/me").authenticated()
+                            .requestMatchers("/api/projects/**").authenticated()
+                            .requestMatchers("/api/users/**").authenticated()
+                            .anyRequest().authenticated();
+                })
                 .authenticationProvider(authenticationProvider())
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                 .exceptionHandling(exceptions -> exceptions

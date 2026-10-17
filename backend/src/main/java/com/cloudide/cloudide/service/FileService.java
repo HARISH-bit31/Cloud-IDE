@@ -106,9 +106,11 @@ public class FileService {
                 .orElseThrow(() -> new ResourceNotFoundException("Project not found with id: " + projectId));
 
         User currentUser = userService.getCurrentAuthenticatedUser();
-        if (project.getUser() != null && !project.getUser().getId().equals(currentUser.getId())) {
-            log.warn("Security violation: User {} attempted to access files in project {} owned by user {}",
-                    currentUser.getId(), projectId, project.getUser().getId());
+        if (currentUser == null || project.getUser() == null || !project.getUser().getId().equals(currentUser.getId())) {
+            log.warn("Security violation: User {} attempted to access files in project {} with owner {}",
+                    currentUser != null ? currentUser.getId() : "null",
+                    projectId,
+                    project.getUser() != null ? project.getUser().getId() : "null");
             throw new ForbiddenException("Access denied: You do not own this project");
         }
 
