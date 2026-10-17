@@ -17,6 +17,8 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
+import org.springframework.test.annotation.DirtiesContext;
+
 import java.util.Map;
 
 import static org.hamcrest.Matchers.*;
@@ -34,6 +36,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "execution.worker.secret=cloudide_worker_secret"
 })
 @AutoConfigureMockMvc
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class ExecutionControllerTests {
 
     @Autowired
@@ -50,6 +53,8 @@ class ExecutionControllerTests {
 
     @BeforeEach
     void setUp() throws Exception {
+        Mockito.reset(executionClient);
+
         // Create User 1
         String user1Email = "user1_" + System.currentTimeMillis() + "@example.com";
         mockMvc.perform(post("/api/auth/register")
@@ -98,6 +103,41 @@ class ExecutionControllerTests {
                 .andExpect(jsonPath("$.workerAvailable", is(true)))
                 .andExpect(jsonPath("$.dockerAvailable", is(true)))
                 .andExpect(jsonPath("$.status", is("UP")));
+    }
+
+    @Test
+    @DisplayName("1b. Public endpoint /api/execution/health returns workerAvailable=false when worker is down")
+    void testExecutionHealthEndpointWhenWorkerUnavailable() throws Exception {
+        ExecutionHealthResponse mockHealth = ExecutionHealthResponse.builder()
+                .status("DOWN")
+                .docker("DISCONNECTED")
+                .workerAvailable(false)
+                .dockerAvailable(false)
+                .dockerVersion("Unknown")
+                .message("Execution Worker unreachable")
+                .imagesStatus(Map.of())
+                .timestamp(System.currentTimeMillis())
+                .build();
+
+        Mockito.when(executionClient.getHealth()).thenReturn(mockHealth);
+
+        mockMvc.perform(get("/api/execution/health"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.workerAvailable", is(false)))
+                .andExpect(jsonPath("$.dockerAvailable", is(false)))
+                .andExpect(jsonPath("$.status", is("DOWN")));
+    }
+
+    @Test
+    @DisplayName("1c. Public endpoint /api/execution/health safely handles null or exception from client")
+    void testExecutionHealthEndpointSafelyHandlesClientNullOrException() throws Exception {
+        Mockito.when(executionClient.getHealth()).thenReturn(null);
+
+        mockMvc.perform(get("/api/execution/health"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.workerAvailable", is(false)))
+                .andExpect(jsonPath("$.dockerAvailable", is(false)))
+                .andExpect(jsonPath("$.status", is("DOWN")));
     }
 
     @Test

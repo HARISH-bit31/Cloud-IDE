@@ -1,23 +1,54 @@
 package com.cloudide.cloudide.dto;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 import java.util.Map;
 
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class ExecutionHealthResponse {
 
+    @JsonProperty("status")
     private String status;
+
+    @JsonProperty("docker")
     private String docker;
+
+    @JsonProperty("workerAvailable")
     private boolean workerAvailable;
+
+    @JsonProperty("dockerAvailable")
     private boolean dockerAvailable;
+
+    @JsonProperty("dockerVersion")
     private String dockerVersion;
+
+    @JsonProperty("message")
     private String message;
+
+    @JsonProperty("timestamp")
     private Long timestamp;
+
+    @JsonProperty("imagesStatus")
     private Map<String, Boolean> imagesStatus;
+
+    @JsonProperty("activeExecutions")
+    private int activeExecutions;
+
+    @JsonProperty("maxConcurrent")
+    private int maxConcurrent;
 
     public ExecutionHealthResponse() {
     }
 
     public ExecutionHealthResponse(String status, String docker, boolean workerAvailable, boolean dockerAvailable,
                                    String dockerVersion, String message, Long timestamp, Map<String, Boolean> imagesStatus) {
+        this(status, docker, workerAvailable, dockerAvailable, dockerVersion, message, timestamp, imagesStatus, 0, 0);
+    }
+
+    public ExecutionHealthResponse(String status, String docker, boolean workerAvailable, boolean dockerAvailable,
+                                   String dockerVersion, String message, Long timestamp, Map<String, Boolean> imagesStatus,
+                                   int activeExecutions, int maxConcurrent) {
         this.status = status;
         this.docker = docker;
         this.workerAvailable = workerAvailable;
@@ -26,6 +57,8 @@ public class ExecutionHealthResponse {
         this.message = message;
         this.timestamp = timestamp;
         this.imagesStatus = imagesStatus;
+        this.activeExecutions = activeExecutions;
+        this.maxConcurrent = maxConcurrent;
     }
 
     public String getStatus() {
@@ -44,18 +77,32 @@ public class ExecutionHealthResponse {
         this.docker = docker;
     }
 
+    @JsonProperty("workerAvailable")
     public boolean isWorkerAvailable() {
         return workerAvailable;
     }
 
+    @JsonProperty("workerAvailable")
+    public boolean getWorkerAvailable() {
+        return workerAvailable;
+    }
+
+    @JsonProperty("workerAvailable")
     public void setWorkerAvailable(boolean workerAvailable) {
         this.workerAvailable = workerAvailable;
     }
 
+    @JsonProperty("dockerAvailable")
     public boolean isDockerAvailable() {
         return dockerAvailable;
     }
 
+    @JsonProperty("dockerAvailable")
+    public boolean getDockerAvailable() {
+        return dockerAvailable;
+    }
+
+    @JsonProperty("dockerAvailable")
     public void setDockerAvailable(boolean dockerAvailable) {
         this.dockerAvailable = dockerAvailable;
     }
@@ -92,6 +139,22 @@ public class ExecutionHealthResponse {
         this.imagesStatus = imagesStatus;
     }
 
+    public int getActiveExecutions() {
+        return activeExecutions;
+    }
+
+    public void setActiveExecutions(int activeExecutions) {
+        this.activeExecutions = activeExecutions;
+    }
+
+    public int getMaxConcurrent() {
+        return maxConcurrent;
+    }
+
+    public void setMaxConcurrent(int maxConcurrent) {
+        this.maxConcurrent = maxConcurrent;
+    }
+
     public static Builder builder() {
         return new Builder();
     }
@@ -105,6 +168,8 @@ public class ExecutionHealthResponse {
         private String message;
         private Long timestamp;
         private Map<String, Boolean> imagesStatus;
+        private int activeExecutions;
+        private int maxConcurrent;
 
         public Builder status(String status) {
             this.status = status;
@@ -146,8 +211,18 @@ public class ExecutionHealthResponse {
             return this;
         }
 
+        public Builder activeExecutions(int activeExecutions) {
+            this.activeExecutions = activeExecutions;
+            return this;
+        }
+
+        public Builder maxConcurrent(int maxConcurrent) {
+            this.maxConcurrent = maxConcurrent;
+            return this;
+        }
+
         public ExecutionHealthResponse build() {
-            return new ExecutionHealthResponse(status, docker, workerAvailable, dockerAvailable, dockerVersion, message, timestamp, imagesStatus);
+            return new ExecutionHealthResponse(status, docker, workerAvailable, dockerAvailable, dockerVersion, message, timestamp, imagesStatus, activeExecutions, maxConcurrent);
         }
     }
 }

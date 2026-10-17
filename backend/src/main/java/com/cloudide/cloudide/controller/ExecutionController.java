@@ -64,6 +64,18 @@ public class ExecutionController {
     @GetMapping("/execution/health")
     public ResponseEntity<ExecutionHealthResponse> getHealth() {
         ExecutionHealthResponse health = executionService.getHealth();
+        if (health == null) {
+            health = ExecutionHealthResponse.builder()
+                    .status("DOWN")
+                    .docker("DISCONNECTED")
+                    .workerAvailable(false)
+                    .dockerAvailable(false)
+                    .dockerVersion("Unknown")
+                    .message("Execution Worker unreachable")
+                    .timestamp(System.currentTimeMillis())
+                    .imagesStatus(Map.of())
+                    .build();
+        }
         return ResponseEntity.ok(health);
     }
 }

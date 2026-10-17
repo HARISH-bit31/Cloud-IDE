@@ -153,7 +153,25 @@ public class ExecutionService {
     }
 
     public ExecutionHealthResponse getHealth() {
-        return executionClient.getHealth();
+        try {
+            ExecutionHealthResponse health = executionClient.getHealth();
+            if (health != null) {
+                return health;
+            }
+        } catch (Exception e) {
+            log.warn("Error checking execution worker health: {}", e.getMessage());
+        }
+
+        return ExecutionHealthResponse.builder()
+                .status("DOWN")
+                .docker("DISCONNECTED")
+                .workerAvailable(false)
+                .dockerAvailable(false)
+                .dockerVersion("Unknown")
+                .message("Execution Worker unreachable")
+                .timestamp(System.currentTimeMillis())
+                .imagesStatus(java.util.Map.of())
+                .build();
     }
 
     private void verifyExecutionOwnership(String executionId, Long userId) {
