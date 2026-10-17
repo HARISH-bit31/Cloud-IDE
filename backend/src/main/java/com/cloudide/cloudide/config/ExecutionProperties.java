@@ -23,6 +23,12 @@ public class ExecutionProperties {
     @org.springframework.beans.factory.annotation.Value("${execution.worker.concurrency:${EXECUTION_WORKER_CONCURRENCY:4}}")
     private int workerConcurrency = 4;
 
+    @org.springframework.beans.factory.annotation.Value("${execution.cache.capacity:${EXECUTION_CACHE_CAPACITY:1000}}")
+    private int cacheCapacity = 1000;
+
+    @org.springframework.beans.factory.annotation.Value("${execution.cache.ttl-minutes:${EXECUTION_CACHE_TTL_MINUTES:10}}")
+    private int cacheTtlMinutes = 10;
+
     @PostConstruct
     public void validateConfiguration() {
         if (workerSecret == null || workerSecret.isBlank() || "replace-with-a-long-random-secret".equalsIgnoreCase(workerSecret)) {
@@ -68,5 +74,21 @@ public class ExecutionProperties {
 
     public void setWorkerConcurrency(int workerConcurrency) {
         this.workerConcurrency = workerConcurrency;
+    }
+
+    public int getCacheCapacity() {
+        return cacheCapacity;
+    }
+
+    public void setCacheCapacity(int cacheCapacity) {
+        this.cacheCapacity = cacheCapacity;
+    }
+
+    public int getCacheTtlMinutes() {
+        return cacheTtlMinutes;
+    }
+
+    public void setCacheTtlMinutes(int cacheTtlMinutes) {
+        this.cacheTtlMinutes = cacheTtlMinutes;
     }
 }

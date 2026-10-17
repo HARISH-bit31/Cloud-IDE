@@ -28,6 +28,6 @@ USER appuser
 
 EXPOSE 8088
 
-ENV JAVA_OPTS="-Xms64m -Xmx512m -XX:+UseG1GC -XX:TieredStopAtLevel=1"
+ENV JAVA_OPTS="-Xms64m -Xmx384m -XX:MaxRAMPercentage=75.0 -XX:+UseG1GC -XX:TieredStopAtLevel=1"
 
 ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]

@@ -20,6 +20,13 @@ public class ExecutionWorkerProperties {
     private String cImage = "cloud-ide-c:latest";
     private String cppImage = "cloud-ide-cpp:latest";
 
+    private boolean readOnlyRoot = true;
+    private String tmpfsMount = "/tmp:rw,nosuid,size=64m";
+    private boolean dropAllCapabilities = true;
+    private boolean noNewPrivileges = true;
+    private int cacheCapacity = 1000;
+    private int cacheTtlMinutes = 10;
+
     public int getMaxConcurrent() {
         return maxConcurrent;
     }
@@ -106,5 +113,53 @@ public class ExecutionWorkerProperties {
 
     public void setCppImage(String cppImage) {
         this.cppImage = cppImage;
+    }
+
+    public boolean isReadOnlyRoot() {
+        return readOnlyRoot;
+    }
+
+    public void setReadOnlyRoot(boolean readOnlyRoot) {
+        this.readOnlyRoot = readOnlyRoot;
+    }
+
+    public String getTmpfsMount() {
+        return tmpfsMount;
+    }
+
+    public void setTmpfsMount(String tmpfsMount) {
+        this.tmpfsMount = tmpfsMount;
+    }
+
+    public boolean isDropAllCapabilities() {
+        return dropAllCapabilities;
+    }
+
+    public void setDropAllCapabilities(boolean dropAllCapabilities) {
+        this.dropAllCapabilities = dropAllCapabilities;
+    }
+
+    public boolean isNoNewPrivileges() {
+        return noNewPrivileges;
+    }
+
+    public void setNoNewPrivileges(boolean noNewPrivileges) {
+        this.noNewPrivileges = noNewPrivileges;
+    }
+
+    public int getCacheCapacity() {
+        return cacheCapacity;
+    }
+
+    public void setCacheCapacity(int cacheCapacity) {
+        this.cacheCapacity = cacheCapacity;
+    }
+
+    public int getCacheTtlMinutes() {
+        return cacheTtlMinutes;
+    }
+
+    public void setCacheTtlMinutes(int cacheTtlMinutes) {
+        this.cacheTtlMinutes = cacheTtlMinutes;
     }
 }

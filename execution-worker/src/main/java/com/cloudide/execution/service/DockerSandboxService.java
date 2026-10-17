@@ -7,6 +7,7 @@ import com.cloudide.execution.dto.ExecutionResponse;
 import com.cloudide.execution.enums.ExecutionStatus;
 import com.cloudide.execution.enums.ProgrammingLanguage;
 import com.cloudide.execution.model.ActiveExecutionSession;
+import com.cloudide.execution.util.ExpiringBoundedCache;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,6 +17,7 @@ import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -27,12 +29,16 @@ public class DockerSandboxService {
 
     private final ExecutionWorkerProperties properties;
     private final ConcurrentHashMap<String, ActiveExecutionSession> activeExecutions = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<String, ExecutionResponse> completedExecutions = new ConcurrentHashMap<>();
+    private final ExpiringBoundedCache<String, ExecutionResponse> completedExecutions;
     private final ScheduledExecutorService watchdogExecutor = Executors.newScheduledThreadPool(4);
     private final ExecutorService streamExecutor = Executors.newCachedThreadPool();
 
     public DockerSandboxService(ExecutionWorkerProperties properties) {
         this.properties = properties;
+        int capacity = Math.max(1, properties.getCacheCapacity());
+        int ttlMinutes = Math.max(1, properties.getCacheTtlMinutes());
+        this.completedExecutions = new ExpiringBoundedCache<>(capacity, Duration.ofMinutes(ttlMinutes));
+        this.watchdogExecutor.scheduleAtFixedRate(this.completedExecutions::cleanUp, 1, 1, TimeUnit.MINUTES);
     }
 
     /**
@@ -170,42 +176,7 @@ public class DockerSandboxService {
             Path sourceFile = tempDir.resolve(filename);
             Files.writeString(sourceFile, code, StandardCharsets.UTF_8);
 
-            String containerScript = getContainerScript(language);
-
-            List<String> command = new ArrayList<>();
-            command.add("docker");
-            command.add("run");
-            command.add("--rm");
-            command.add("-i");
-            command.add("--name");
-            command.add(containerName);
-
-            if (properties.isNetworkDisabled()) {
-                command.add("--network");
-                command.add("none");
-            }
-
-            command.add("--memory");
-            command.add(properties.getMemoryLimit());
-
-            command.add("--cpus");
-            command.add(properties.getCpuLimit());
-
-            command.add("--pids-limit");
-            command.add(String.valueOf(properties.getPidsLimit()));
-
-            // Mount temporary directory as /workspace
-            String hostPath = tempDir.toAbsolutePath().toString().replace('\\', '/');
-            command.add("-v");
-            command.add(hostPath + ":/workspace:rw");
-
-            command.add("-w");
-            command.add("/workspace");
-
-            command.add(image);
-            command.add("sh");
-            command.add("-c");
-            command.add(containerScript);
+            List<String> command = buildDockerRunCommand(containerName, tempDir, language);
 
             log.info("Worker launching container {} (id: {}) for {} execution...", containerName, executionId, language);
 
@@ -578,6 +549,75 @@ public class DockerSandboxService {
         } catch (Exception e) {
             log.debug("Failed to delete temp dir {}: {}", path, e.getMessage());
         }
+    }
+
+    List<String> buildDockerRunCommand(String containerName, Path tempDir, ProgrammingLanguage language) {
+        String image = getImageName(language);
+        String containerScript = getContainerScript(language);
+
+        List<String> command = new ArrayList<>();
+        command.add("docker");
+        command.add("run");
+        command.add("--rm");
+        command.add("-i");
+        command.add("--name");
+        command.add(containerName);
+
+        if (properties.isNetworkDisabled()) {
+            command.add("--network");
+            command.add("none");
+        }
+
+        command.add("--memory");
+        command.add(properties.getMemoryLimit());
+
+        command.add("--cpus");
+        command.add(properties.getCpuLimit());
+
+        command.add("--pids-limit");
+        command.add(String.valueOf(properties.getPidsLimit()));
+
+        if (properties.isDropAllCapabilities()) {
+            command.add("--cap-drop");
+            command.add("ALL");
+        }
+
+        if (properties.isNoNewPrivileges()) {
+            command.add("--security-opt");
+            command.add("no-new-privileges:true");
+        }
+
+        if (properties.isReadOnlyRoot()) {
+            command.add("--read-only");
+        }
+
+        if (properties.getTmpfsMount() != null && !properties.getTmpfsMount().isBlank()) {
+            command.add("--tmpfs");
+            command.add(properties.getTmpfsMount());
+        }
+
+        // Mount temporary directory as /workspace
+        String hostPath = tempDir.toAbsolutePath().toString().replace('\\', '/');
+        command.add("-v");
+        command.add(hostPath + ":/workspace:rw");
+
+        command.add("-w");
+        command.add("/workspace");
+
+        command.add(image);
+        command.add("sh");
+        command.add("-c");
+        command.add(containerScript);
+
+        return command;
+    }
+
+    public int getActiveExecutionCount() {
+        return activeExecutions.size();
+    }
+
+    public int getCompletedExecutionCount() {
+        return completedExecutions.size();
     }
 
     @PreDestroy

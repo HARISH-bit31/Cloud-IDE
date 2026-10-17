@@ -7,12 +7,14 @@ import com.cloudide.cloudide.enums.ExecutionStatus;
 import com.cloudide.cloudide.exception.QueueFullException;
 import com.cloudide.cloudide.metrics.ExecutionMetrics;
 import com.cloudide.cloudide.model.ExecutionRecord;
+import com.cloudide.cloudide.util.ExpiringBoundedCache;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -26,7 +28,9 @@ public class ExecutionDispatcher {
     private final ExecutionClient executionClient;
 
     private BlockingQueue<ExecutionRecord> executionQueue;
-    private final ConcurrentHashMap<String, ExecutionRecord> registry = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, ExecutionRecord> activeRegistry = new ConcurrentHashMap<>();
+    private ExpiringBoundedCache<String, ExecutionRecord> completedRegistry;
+    private ScheduledExecutorService cacheCleanerExecutor;
     private Semaphore concurrencySemaphore;
     private ExecutorService dispatcherPool;
     private final AtomicBoolean running = new AtomicBoolean(true);
@@ -43,13 +47,22 @@ public class ExecutionDispatcher {
     public void init() {
         int queueCapacity = Math.max(1, properties.getQueueCapacity());
         int workerConcurrency = Math.max(1, properties.getWorkerConcurrency());
+        int cacheCapacity = Math.max(1, properties.getCacheCapacity());
+        int cacheTtlMinutes = Math.max(1, properties.getCacheTtlMinutes());
 
-        log.info("Initializing ExecutionDispatcher with queue capacity: {}, worker concurrency: {}",
-                queueCapacity, workerConcurrency);
+        log.info("Initializing ExecutionDispatcher with queue capacity: {}, worker concurrency: {}, cache capacity: {}, cache TTL: {}m",
+                queueCapacity, workerConcurrency, cacheCapacity, cacheTtlMinutes);
 
         this.executionQueue = new LinkedBlockingQueue<>(queueCapacity);
         this.concurrencySemaphore = new Semaphore(workerConcurrency, true);
         this.dispatcherPool = Executors.newFixedThreadPool(workerConcurrency + 2);
+        this.completedRegistry = new ExpiringBoundedCache<>(cacheCapacity, Duration.ofMinutes(cacheTtlMinutes));
+        this.cacheCleanerExecutor = Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread t = new Thread(r, "execution-cache-cleaner");
+            t.setDaemon(true);
+            return t;
+        });
+        this.cacheCleanerExecutor.scheduleAtFixedRate(completedRegistry::cleanUp, 1, 1, TimeUnit.MINUTES);
 
         // Start dispatcher consumer thread
         dispatcherPool.submit(this::dispatchLoop);
@@ -58,6 +71,9 @@ public class ExecutionDispatcher {
     @PreDestroy
     public void shutdown() {
         running.set(false);
+        if (cacheCleanerExecutor != null) {
+            cacheCleanerExecutor.shutdownNow();
+        }
         if (dispatcherPool != null) {
             dispatcherPool.shutdownNow();
         }
@@ -68,11 +84,11 @@ public class ExecutionDispatcher {
             throw new IllegalArgumentException("ExecutionRecord cannot be null");
         }
 
-        registry.put(record.getExecutionId(), record);
+        activeRegistry.put(record.getExecutionId(), record);
 
         boolean enqueued = executionQueue.offer(record);
         if (!enqueued) {
-            registry.remove(record.getExecutionId());
+            activeRegistry.remove(record.getExecutionId());
             String lang = record.getLanguage() != null ? record.getLanguage().name() : "UNKNOWN";
             metrics.recordExecutionQueueRejected(lang);
             log.warn("Execution queue is full ({}/{}). Rejecting execution {}",
@@ -110,6 +126,8 @@ public class ExecutionDispatcher {
 
                 if (record.isCancelled()) {
                     log.info("Execution {} was cancelled while in queue. Skipping worker dispatch.", record.getExecutionId());
+                    activeRegistry.remove(record.getExecutionId());
+                    completedRegistry.put(record.getExecutionId(), record);
                     concurrencySemaphore.release();
                     continue;
                 }
@@ -191,27 +209,46 @@ public class ExecutionDispatcher {
             record.setStderr("Execution engine failure: " + e.getMessage());
             metrics.recordExecutionFailure(lang, "DISPATCHER_ERROR");
         } finally {
+            if (record.isTerminal()) {
+                activeRegistry.remove(record.getExecutionId());
+                completedRegistry.put(record.getExecutionId(), record);
+            }
             concurrencySemaphore.release();
         }
     }
 
     public ExecutionRecord getRecord(String executionId) {
-        return registry.get(executionId);
+        if (executionId == null) {
+            return null;
+        }
+        ExecutionRecord active = activeRegistry.get(executionId);
+        if (active != null) {
+            return active;
+        }
+        return completedRegistry != null ? completedRegistry.get(executionId) : null;
     }
 
     public ExecutionResponse stopExecution(String executionId) {
-        ExecutionRecord record = registry.get(executionId);
-        if (record == null) {
+        if (executionId == null) {
             return null;
+        }
+        ExecutionRecord record = activeRegistry.get(executionId);
+        if (record == null) {
+            ExecutionRecord completed = completedRegistry != null ? completedRegistry.get(executionId) : null;
+            return completed != null ? completed.toResponse() : null;
         }
 
         if (record.isTerminal()) {
+            activeRegistry.remove(executionId);
+            completedRegistry.put(executionId, record);
             return record.toResponse();
         }
 
         if (record.getStatus() == ExecutionStatus.QUEUED) {
             record.markCancelled();
             executionQueue.remove(record);
+            activeRegistry.remove(executionId);
+            completedRegistry.put(executionId, record);
             metrics.updateQueueSize(executionQueue.size());
             metrics.recordExecutionCompleted(record.getLanguage() != null ? record.getLanguage().name() : "UNKNOWN", ExecutionStatus.STOPPED.name(), 0);
             log.info("Execution {} cancelled while queued.", executionId);
@@ -227,11 +264,16 @@ public class ExecutionDispatcher {
         long duration = record.getExecutionTimeMs() != null ? record.getExecutionTimeMs() : 0;
         metrics.recordExecutionCompleted(record.getLanguage() != null ? record.getLanguage().name() : "UNKNOWN", ExecutionStatus.STOPPED.name(), duration);
         log.info("Execution {} stopped on worker.", executionId);
+        activeRegistry.remove(executionId);
+        completedRegistry.put(executionId, record);
         return record.toResponse();
     }
 
     public boolean sendInput(String executionId, String input) {
-        ExecutionRecord record = registry.get(executionId);
+        if (executionId == null) {
+            return false;
+        }
+        ExecutionRecord record = activeRegistry.get(executionId);
         if (record == null) {
             return false;
         }
@@ -242,6 +284,14 @@ public class ExecutionDispatcher {
 
         log.warn("Cannot send input to execution {} in status {}", executionId, record.getStatus());
         return false;
+    }
+
+    public int getActiveCount() {
+        return activeRegistry.size();
+    }
+
+    public int getCompletedCount() {
+        return completedRegistry != null ? completedRegistry.size() : 0;
     }
 
     public int getQueueSize() {
