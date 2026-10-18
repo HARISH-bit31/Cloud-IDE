@@ -98,58 +98,57 @@ public class ExecutionService {
 
     public boolean sendInput(String executionId, String input) {
         User currentUser = userService.getCurrentAuthenticatedUser();
-        verifyExecutionOwnership(executionId, currentUser.getId());
-
-        log.info("User {} sending stdin input to execution {}", currentUser.getEmail(), executionId);
-        boolean sent = executionDispatcher.sendInput(executionId, input);
-        if (sent) {
-            return true;
+        Long currentUserId = currentUser != null ? currentUser.getId() : null;
+        if (currentUserId == null) {
+            throw new ForbiddenException("Authentication required to send execution input");
         }
-        try {
-            return executionClient.sendInput(executionId, input);
-        } catch (Exception e) {
-            log.warn("Failed to forward stdin to worker for execution {}: {}", executionId, e.getMessage());
+
+        ExecutionRecord record = getVerifiedRecord(executionId, currentUserId);
+        if (record == null) {
+            // Fail closed: missing local record cannot establish ownership. Never forward to worker.
+            log.warn("User {} attempted to send stdin to unknown or unverified execution session {}",
+                    currentUser.getEmail(), executionId);
             return false;
         }
+
+        log.info("User {} sending stdin input to execution {}", currentUser.getEmail(), executionId);
+        return executionDispatcher.sendInput(executionId, input);
     }
 
     public ExecutionResponse getExecutionStatus(String executionId) {
         User currentUser = userService.getCurrentAuthenticatedUser();
-        verifyExecutionOwnership(executionId, currentUser.getId());
-
-        ExecutionRecord record = executionDispatcher.getRecord(executionId);
-        if (record != null) {
-            return record.toResponse();
+        Long currentUserId = currentUser != null ? currentUser.getId() : null;
+        if (currentUserId == null) {
+            throw new ForbiddenException("Authentication required to access execution status");
         }
 
-        try {
-            ExecutionResponse workerRes = executionClient.getExecutionStatus(executionId);
-            if (workerRes != null && workerRes.getStatus() != null) {
-                return workerRes;
-            }
-        } catch (Exception e) {
-            log.debug("Worker status query for {} produced: {}", executionId, e.getMessage());
+        ExecutionRecord record = getVerifiedRecord(executionId, currentUserId);
+        if (record == null) {
+            // Fail closed: missing local record cannot establish ownership. Never fall back to worker.
+            log.debug("Execution status lookup failed: no verified local record for {}", executionId);
+            return null;
         }
 
-        return null;
+        return record.toResponse();
     }
 
     public ExecutionResponse stopExecution(String executionId) {
         User currentUser = userService.getCurrentAuthenticatedUser();
-        verifyExecutionOwnership(executionId, currentUser.getId());
-
-        log.info("User {} requesting stop for execution {}", currentUser.getEmail(), executionId);
-        ExecutionResponse response = executionDispatcher.stopExecution(executionId);
-        if (response != null) {
-            return response;
+        Long currentUserId = currentUser != null ? currentUser.getId() : null;
+        if (currentUserId == null) {
+            throw new ForbiddenException("Authentication required to stop execution");
         }
 
-        try {
-            return executionClient.stopExecution(executionId);
-        } catch (Exception e) {
-            log.warn("Failed to forward stop to worker for execution {}: {}", executionId, e.getMessage());
+        ExecutionRecord record = getVerifiedRecord(executionId, currentUserId);
+        if (record == null) {
+            // Fail closed: missing local record cannot establish ownership. Never forward stop to worker.
+            log.warn("User {} attempted to stop unknown or unverified execution session {}",
+                    currentUser.getEmail(), executionId);
             return null;
         }
+
+        log.info("User {} requesting stop for execution {}", currentUser.getEmail(), executionId);
+        return executionDispatcher.stopExecution(executionId);
     }
 
     public ExecutionHealthResponse getHealth() {
@@ -174,12 +173,16 @@ public class ExecutionService {
                 .build();
     }
 
-    private void verifyExecutionOwnership(String executionId, Long userId) {
+    private ExecutionRecord getVerifiedRecord(String executionId, Long userId) {
+        if (executionId == null || executionId.isBlank() || userId == null) {
+            return null;
+        }
         ExecutionRecord record = executionDispatcher.getRecord(executionId);
         if (record != null && !Objects.equals(record.getUserId(), userId)) {
             log.warn("Security violation: User {} attempted to access execution {} owned by User {}",
                     userId, executionId, record.getUserId());
             throw new ForbiddenException("You do not have permission to access this execution session");
         }
+        return record;
     }
 }

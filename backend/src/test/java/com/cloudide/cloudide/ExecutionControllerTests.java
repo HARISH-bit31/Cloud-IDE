@@ -20,6 +20,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.annotation.DirtiesContext;
 
 import java.util.Map;
+import java.util.UUID;
 
 import static org.hamcrest.Matchers.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -215,6 +216,10 @@ class ExecutionControllerTests {
                         .content(objectMapper.writeValueAsString(new ExecutionInputRequest("10\n"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success", is(true)));
+
+        // Stop execution to release worker concurrency permit
+        mockMvc.perform(post("/api/execute/" + execId + "/stop")
+                        .header("Authorization", "Bearer " + user1Token));
     }
 
     @Test
@@ -245,6 +250,10 @@ class ExecutionControllerTests {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new ExecutionInputRequest("malicious input"))))
                 .andExpect(status().isForbidden());
+
+        // Stop execution to release worker concurrency permit
+        mockMvc.perform(post("/api/execute/" + execId + "/stop")
+                        .header("Authorization", "Bearer " + user1Token));
     }
 
     @Test
@@ -271,6 +280,10 @@ class ExecutionControllerTests {
         mockMvc.perform(post("/api/execute/" + execId + "/stop")
                         .header("Authorization", "Bearer " + user2Token))
                 .andExpect(status().isForbidden());
+
+        // Stop execution to release worker concurrency permit
+        mockMvc.perform(post("/api/execute/" + execId + "/stop")
+                        .header("Authorization", "Bearer " + user1Token));
     }
 
     @Test
@@ -297,11 +310,148 @@ class ExecutionControllerTests {
                 .andReturn().getResponse().getContentAsString();
 
         String execId = objectMapper.readTree(postRes).get("executionId").asText();
-        Thread.sleep(150);
+        // Wait briefly for asynchronous dispatcher loop to pick up the queued execution
+        for (int i = 0; i < 20; i++) {
+            Thread.sleep(50);
+            String statusRes = mockMvc.perform(get("/api/execute/" + execId)
+                            .header("Authorization", "Bearer " + user1Token))
+                    .andReturn().getResponse().getContentAsString();
+            String curStatus = objectMapper.readTree(statusRes).get("status").asText();
+            if (!"QUEUED".equals(curStatus)) {
+                break;
+            }
+        }
 
         mockMvc.perform(get("/api/execute/" + execId)
                         .header("Authorization", "Bearer " + user1Token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status", anyOf(is("SYSTEM_ERROR"), is("FAILED"), is("RUNNING"))));
+    }
+
+    @Test
+    @DisplayName("9. Execution Ownership Security: User A can query their own execution status")
+    void testGetExecutionStatusAllowedForOwner() throws Exception {
+        ExecutionRequest req = new ExecutionRequest(ProgrammingLanguage.JAVA, "System.out.println()", null, null, null);
+
+        Mockito.when(executionClient.startExecution(any(String.class), any(ExecutionRequest.class)))
+                .thenAnswer(inv -> ExecutionResponse.builder()
+                        .executionId(inv.getArgument(0))
+                        .status(ExecutionStatus.SUCCESS)
+                        .stdout("Secret output from user 1")
+                        .exitCode(0)
+                        .executionTimeMs(50L)
+                        .build());
+
+        String postRes = mockMvc.perform(post("/api/execute")
+                        .header("Authorization", "Bearer " + user1Token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+
+        String execId = objectMapper.readTree(postRes).get("executionId").asText();
+
+        // Allow dispatcher to execute and complete
+        Thread.sleep(100);
+
+        mockMvc.perform(get("/api/execute/" + execId)
+                        .header("Authorization", "Bearer " + user1Token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.executionId", is(execId)));
+    }
+
+    @Test
+    @DisplayName("10. Execution Ownership Security: User B cannot query User A's execution status (403 Forbidden)")
+    void testGetExecutionStatusRejectsOtherUser() throws Exception {
+        ExecutionRequest req = new ExecutionRequest(ProgrammingLanguage.JAVA, "System.out.println()", null, null, null);
+
+        Mockito.when(executionClient.startExecution(any(String.class), any(ExecutionRequest.class)))
+                .thenAnswer(inv -> ExecutionResponse.builder()
+                        .executionId(inv.getArgument(0))
+                        .status(ExecutionStatus.SUCCESS)
+                        .stdout("Secret output from user 1")
+                        .exitCode(0)
+                        .executionTimeMs(50L)
+                        .build());
+
+        String postRes = mockMvc.perform(post("/api/execute")
+                        .header("Authorization", "Bearer " + user1Token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+
+        String execId = objectMapper.readTree(postRes).get("executionId").asText();
+
+        // Allow dispatcher to execute and complete
+        Thread.sleep(100);
+
+        // User B attempts to access User A's execution status -> 403 Forbidden
+        mockMvc.perform(get("/api/execute/" + execId)
+                        .header("Authorization", "Bearer " + user2Token))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("11. Fail Closed: Querying unknown execution ID returns 404 without calling worker")
+    void testQueryUnknownExecutionIdFailsClosed() throws Exception {
+        String nonExistentId = "non-existent-" + UUID.randomUUID();
+
+        mockMvc.perform(get("/api/execute/" + nonExistentId)
+                        .header("Authorization", "Bearer " + user1Token))
+                .andExpect(status().isNotFound());
+
+        // Verify that executionClient.getExecutionStatus was NEVER called
+        Mockito.verify(executionClient, Mockito.never()).getExecutionStatus(nonExistentId);
+    }
+
+    @Test
+    @DisplayName("12. Fail Closed: Missing local record does not fall back to worker even if worker has execution data")
+    void testMissingRecordDoesNotFallBackToWorker() throws Exception {
+        String foreignExecId = "worker-only-" + UUID.randomUUID();
+
+        // Even if worker mock has data for this foreign execution ID
+        Mockito.when(executionClient.getExecutionStatus(foreignExecId))
+                .thenReturn(ExecutionResponse.builder()
+                        .executionId(foreignExecId)
+                        .status(ExecutionStatus.SUCCESS)
+                        .stdout("Leaked worker secret")
+                        .build());
+
+        // Requesting user has no verified local record for this execution
+        mockMvc.perform(get("/api/execute/" + foreignExecId)
+                        .header("Authorization", "Bearer " + user1Token))
+                .andExpect(status().isNotFound())
+                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("Leaked worker secret"))));
+
+        // Verify worker fallback was never queried
+        Mockito.verify(executionClient, Mockito.never()).getExecutionStatus(foreignExecId);
+    }
+
+    @Test
+    @DisplayName("13. Fail Closed: Stdin to unknown execution returns 400 Bad Request without calling worker")
+    void testSendInputToUnknownExecutionFailsClosed() throws Exception {
+        String nonExistentId = "non-existent-" + UUID.randomUUID();
+
+        mockMvc.perform(post("/api/execute/" + nonExistentId + "/input")
+                        .header("Authorization", "Bearer " + user1Token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new ExecutionInputRequest("input\n"))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success", is(false)));
+
+        Mockito.verify(executionClient, Mockito.never()).sendInput(any(), any());
+    }
+
+    @Test
+    @DisplayName("14. Fail Closed: Stop unknown execution returns 404 Not Found without calling worker")
+    void testStopUnknownExecutionFailsClosed() throws Exception {
+        String nonExistentId = "non-existent-" + UUID.randomUUID();
+
+        mockMvc.perform(post("/api/execute/" + nonExistentId + "/stop")
+                        .header("Authorization", "Bearer " + user1Token))
+                .andExpect(status().isNotFound());
+
+        Mockito.verify(executionClient, Mockito.never()).stopExecution(any());
     }
 }
