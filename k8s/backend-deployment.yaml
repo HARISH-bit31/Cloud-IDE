@@ -117,7 +117,7 @@ spec:
             allowPrivilegeEscalation: false
           startupProbe:
             httpGet:
-              path: /api/health
+              path: /actuator/health/liveness
               port: 8088
             initialDelaySeconds: 10
             periodSeconds: 5
@@ -125,7 +125,7 @@ spec:
             failureThreshold: 12
           readinessProbe:
             httpGet:
-              path: /api/health
+              path: /actuator/health/readiness
               port: 8088
             initialDelaySeconds: 5
             periodSeconds: 5
@@ -133,7 +133,7 @@ spec:
             failureThreshold: 3
           livenessProbe:
             httpGet:
-              path: /api/health
+              path: /actuator/health/liveness
               port: 8088
             initialDelaySeconds: 15
             periodSeconds: 10
