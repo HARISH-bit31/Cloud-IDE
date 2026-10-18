@@ -12,6 +12,9 @@ data:
       scrape_interval: 5s
       evaluation_interval: 5s
 
+    rule_files:
+      - /etc/prometheus/alert_rules.yml
+
     scrape_configs:
       - job_name: 'cloud-ide-backend'
         metrics_path: '/actuator/prometheus'
@@ -21,3 +24,43 @@ data:
             labels:
               app: 'backend'
               environment: 'local-k8s'
+
+  alert_rules.yml: |
+    groups:
+      - name: cloud-ide-alerts
+        rules:
+          - alert: BackendServiceDown
+            expr: up{job="cloud-ide-backend"} == 0
+            for: 1m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Cloud IDE backend service is down"
+              description: "Prometheus has been unable to scrape the Cloud IDE backend on backend:8088 for more than 1 minute."
+
+          - alert: ExecutionQueueSaturated
+            expr: cloud_ide_execution_queue_size > 15
+            for: 1m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Execution queue saturation is high"
+              description: "Execution queue size is {{ $value }} (capacity: 20), indicating high workload or slow worker processing."
+
+          - alert: ExecutionQueueDroppingRequests
+            expr: rate(cloud_ide_execution_queue_rejected_total[1m]) > 0
+            for: 30s
+            labels:
+              severity: critical
+            annotations:
+              summary: "Execution queue is full and rejecting user execution requests"
+              description: "Execution requests are being dropped because the queue capacity is exhausted."
+
+          - alert: ExecutionWorkerCommunicationFailure
+            expr: rate(cloud_ide_executions_total{status="SYSTEM_ERROR"}[2m]) > 0
+            for: 1m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Execution worker communication failure detected"
+              description: "Backend reports SYSTEM_ERROR status indicating failure to communicate with the external execution worker service. (Note: Worker does not expose an independent Prometheus scrape target; connectivity is inferred via backend dispatch telemetry)."

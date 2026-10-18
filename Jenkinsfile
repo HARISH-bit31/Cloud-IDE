@@ -19,6 +19,10 @@ pipeline {
     environment {
         // Unique build tag based on Jenkins build number
         IMAGE_TAG = "build-${env.BUILD_NUMBER ?: 'manual'}"
+        // Rollback safety tracking flags
+        DEPLOYMENT_ATTEMPTED = 'false'
+        BACKEND_DEPLOYED = 'false'
+        FRONTEND_DEPLOYED = 'false'
     }
 
     options {
@@ -220,13 +224,22 @@ pipeline {
                     def frontendImage = "cloud-ide-frontend:${env.IMAGE_TAG}"
                     def backendImage = "cloud-ide-backend:${env.IMAGE_TAG}"
 
+                    echo "[Deploy] Updating backend deployment image to: ${backendImage}"
                     if (isUnix()) {
-                        sh "kubectl set image deployment/frontend frontend=${frontendImage} -n cloud-ide"
                         sh "kubectl set image deployment/backend backend=${backendImage} -n cloud-ide"
                     } else {
-                        bat "call kubectl set image deployment/frontend frontend=${frontendImage} -n cloud-ide"
                         bat "call kubectl set image deployment/backend backend=${backendImage} -n cloud-ide"
                     }
+                    env.BACKEND_DEPLOYED = 'true'
+                    env.DEPLOYMENT_ATTEMPTED = 'true'
+
+                    echo "[Deploy] Updating frontend deployment image to: ${frontendImage}"
+                    if (isUnix()) {
+                        sh "kubectl set image deployment/frontend frontend=${frontendImage} -n cloud-ide"
+                    } else {
+                        bat "call kubectl set image deployment/frontend frontend=${frontendImage} -n cloud-ide"
+                    }
+                    env.FRONTEND_DEPLOYED = 'true'
                 }
             }
         }
@@ -279,24 +292,40 @@ pipeline {
         }
         failure {
             script {
-                if (params.DEPLOY_TO_LOCAL_K8S) {
+                // Rollback safety: only execute rollback if a deployment was actually attempted and modified in this build.
+                // Never run rollback if earlier test, lint, security, or build stages failed.
+                if (env.DEPLOYMENT_ATTEMPTED == 'true') {
                     if (!env.KUBECONFIG) {
                         env.KUBECONFIG = isUnix() ? "${env.HOME}/.kube/config" : 'C:\\Users\\Welcome\\.kube\\config'
                     }
-                    echo "[Rollback] Pipeline failed during or after deployment. Initiating automated rollback to previous deployment revision..."
+                    echo "[Rollback] Pipeline failed after deployment was initiated. Rolling back only modified deployments..."
+                    if (env.BACKEND_DEPLOYED == 'true') {
+                        echo "[Rollback] Reverting backend deployment to previous revision..."
+                        if (isUnix()) {
+                            sh 'kubectl rollout undo deployment/backend -n cloud-ide || true'
+                            sh 'kubectl rollout status deployment/backend -n cloud-ide --timeout=120s || true'
+                        } else {
+                            bat 'call kubectl rollout undo deployment/backend -n cloud-ide || echo Backend rollback skipped/failed'
+                            bat 'call kubectl rollout status deployment/backend -n cloud-ide --timeout=120s || echo Backend status skipped/failed'
+                        }
+                    }
+                    if (env.FRONTEND_DEPLOYED == 'true') {
+                        echo "[Rollback] Reverting frontend deployment to previous revision..."
+                        if (isUnix()) {
+                            sh 'kubectl rollout undo deployment/frontend -n cloud-ide || true'
+                            sh 'kubectl rollout status deployment/frontend -n cloud-ide --timeout=120s || true'
+                        } else {
+                            bat 'call kubectl rollout undo deployment/frontend -n cloud-ide || echo Frontend rollback skipped/failed'
+                            bat 'call kubectl rollout status deployment/frontend -n cloud-ide --timeout=120s || echo Frontend status skipped/failed'
+                        }
+                    }
                     if (isUnix()) {
-                        sh 'kubectl rollout undo deployment/backend -n cloud-ide || true'
-                        sh 'kubectl rollout undo deployment/frontend -n cloud-ide || true'
-                        sh 'kubectl rollout status deployment/backend -n cloud-ide --timeout=120s || true'
-                        sh 'kubectl rollout status deployment/frontend -n cloud-ide --timeout=120s || true'
                         sh 'kubectl get events -n cloud-ide --sort-by=.metadata.creationTimestamp | tail -n 25 || true'
                     } else {
-                        bat 'call kubectl rollout undo deployment/backend -n cloud-ide || echo Backend rollback skipped/failed'
-                        bat 'call kubectl rollout undo deployment/frontend -n cloud-ide || echo Frontend rollback skipped/failed'
-                        bat 'call kubectl rollout status deployment/backend -n cloud-ide --timeout=120s || echo Backend status skipped/failed'
-                        bat 'call kubectl rollout status deployment/frontend -n cloud-ide --timeout=120s || echo Frontend status skipped/failed'
                         bat 'call kubectl get events -n cloud-ide --sort-by=.metadata.creationTimestamp || echo Events capture failed'
                     }
+                } else {
+                    echo "[Rollback Guard] Pipeline failed prior to deployment modification. No Kubernetes workloads were changed; skipping rollback."
                 }
                 echo "FAILURE: Cloud IDE CI/CD pipeline failed during build #${env.BUILD_NUMBER}. Check stage logs for details."
             }

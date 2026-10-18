@@ -20,6 +20,8 @@ spec:
     - ports:
         - protocol: TCP
           port: 80
+        - protocol: TCP
+          port: 8080
   egress:
     # Allow frontend to proxy API requests to backend pod
     - to:
